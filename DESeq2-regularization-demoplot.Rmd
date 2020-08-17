@@ -65,6 +65,8 @@ explained in (Love et al.), and Figure 8.10 visualizes the
 approach for the $\beta$s.
 
 ```{r shrink1}
+# The following code is based on guidance from Mike Love
+
 library("apeglm")
 res1  = results(pasilla, cooksCutoff = FALSE)
 res2  = lfcShrink(pasilla, coef = "condition_treated_vs_untreated", res = res1)
