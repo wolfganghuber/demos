@@ -1,0 +1,269 @@
+---
+title: "LEMUR demo plots: Alzheimer data"
+author: "Wolfgang Huber"
+date: "2024-04-12"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    toc: true
+    css: wh.css
+highlight-style: tango
+---
+
+```{r initialize}
+#| label: init
+#| echo: false
+#| cache: false
+## Set default options for code chunks
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+```{r}
+#| label: loadpkgs
+#| message: false
+#| cache: false
+library("tidyverse")
+library("glue")
+library("SingleCellExperiment")
+library("lemur")
+```
+```{r}
+#| label: util
+#| cache: false
+source("/Users/whuber/clones/Constantin/lemur-Paper/notebooks/util.R")
+```
+```{r}
+#| label: loaddata
+fit = qs::qread("./cable_spatial_plaque_data/fit_small.qs")
+nei = qs::qread("./cable_spatial_plaque_data/nei_small.qs")
+```
+
+Center $x$ and $y$ coordinates for each mouse
+
+```{r}
+#| label: center
+cd = colData(fit)
+for (s in levels(cd$sample)) {
+  i = (cd$sample == s)
+  cd$x[i] = cd$x[i] - mean(cd$x[i]) 
+  cd$y[i] = cd$y[i] - mean(cd$y[i]) 
+}
+colData(fit) = cd
+
+# dplyr version of this code that might work if colData(fit) were a tibble or dataframe (not tested):
+#
+# colData(fit) = mutate(group_by(colData(fit), sample),
+#  x = x - mean(x), 
+#  y = y - mean(y) 
+# )
+```
+
+
+Shared variables
+
+```{r}
+mouse_labels = structure(paste0("Mouse ", 1:4), names = paste0("mouse_", 1:4))
+pointsize = 0.22
+```
+
+### Spatial plaque density
+
+```{r}
+#| label: fig_spatial_plaq_dens
+#| paged.print: FALSE
+#| fig-width: 3.2
+#| fig-height: 3
+#| fig-dpi: 600
+spatial_plaq_dens_pl = as_tibble(colData(fit)) |>
+  ggplot(aes(x = x, y = y)) +
+    ggrastr::rasterize(geom_point(aes(color = plaque_density), size = pointsize, stroke = 0), dpi = 600) +
+    scale_color_gradient(low = "lightgrey", high = "darkorange", limits = c(0, 1), breaks = c(0, 0.5, 1)) +
+    facet_wrap(vars(sample), labeller = as_labeller(mouse_labels)) +
+    small_axis(label = "spatial coord.", fontsize = font_size_small) +
+    labs(color = "Plaque density") +
+    theme(legend.position = "bottom")
+
+spatial_plaq_dens_pl
+```
+
+### The `r nei$name` neighborhood
+
+```{r}
+#| label: fig_spatial_jun_nbhood
+#| paged.print: FALSE
+#| fig-width: 3.2
+#| fig-height: 3
+#| fig-dpi: 600
+scale_inside_outside = scale_color_manual(
+  name = "Cells",
+  values = c("inside" = "blue3", "outside" = "#a8a8a8"), 
+  labels = c("inside" = "selected by LEMUR", "outside" = "others")) 
+
+spatial_jun_nbhood = as_tibble(colData(fit), rownames = "cell") |>
+  mutate(origin = ifelse(cell %in% nei$neighborhood[[1]], "inside", "outside")) |>
+  ggplot(aes(x = x, y = y)) +
+    ggrastr::rasterize(geom_point(aes(color = origin), size = pointsize, stroke = 0), dpi = 600) +
+    scale_inside_outside +
+    facet_wrap(vars(sample), labeller = as_labeller(mouse_labels)) +
+    small_axis(label = "spatial coord.", fontsize = font_size_small) +
+    theme(legend.position = "bottom")
+
+spatial_jun_nbhood
+```
+
+### Plaque density for cells within and outside `r nei$name` neighborhood
+
+```{r, paged.print=FALSE}
+#| label: fig_spatial_plaq_dens_by_neighborhood
+#| paged.print: FALSE
+#| fig-width: 7.5
+#| fig-height: 5
+#| fig-dpi: 600
+nei$name
+as_tibble(colData(fit), rownames = "cell") |>
+  mutate(inside = cell %in% nei$neighborhood[[1]]) |>
+  ggplot(aes(x = x, y = y)) +
+    ggrastr::rasterize(geom_point(aes(color = plaque_density), size = pointsize, stroke = 0), dpi = 600) +
+    scale_color_gradient(low = "lightgrey", high = "darkorange", limits = c(0, 1), breaks = c(0, 0.5, 1)) +
+    facet_grid(vars(inside), vars(sample), labeller = label_both) +
+    small_axis(label = "spatial coord.", fontsize = font_size_small) +
+    labs(color = "Plaque density") +
+    theme(legend.position = "bottom")
+```
+
+### Spatial `r nei$name` expression
+
+```{r}
+#| label: fig_spatial_jun_expression
+#| paged.print: FALSE
+#| fig-width: 3.2
+#| fig-height: 3
+#| fig-dpi: 600
+spatial_jun_expr = as_tibble(colData(fit)) |>
+  mutate(expr = logcounts(fit)["Jun", ]) |>
+  ggplot(aes(x = x, y = y)) +
+    ggrastr::rasterize(geom_point(aes(color = expr), size = pointsize, stroke = 0), dpi = 600) +
+    colorspace::scale_color_continuous_sequential(
+      limits = c(0, quantile(logcounts(fit)["Jun",], c(0.98))), 
+      oob = scales::oob_squish, palette = "Blues 2", n.breaks = 3) +
+    facet_wrap(vars(sample), labeller = as_labeller(mouse_labels)) +
+    small_axis(label = "spatial coord.", fontsize = font_size_small) +
+    labs(color = "Jun Expression") +
+    theme(legend.position = "bottom")
+
+spatial_jun_expr
+```
+
+### Spatial `r nei$name` expression, stratified by neighborhood
+
+```{r}
+#| label: fig_spatial_jun_expression_by_neighborhood
+#| paged.print: FALSE
+#| fig-width: 7.5
+#| fig-height: 6
+#| fig-dpi: 600
+as_tibble(colData(fit), rownames = "cell") %>%
+  mutate(inside = cell %in% nei$neighborhood[[1]]) %>%
+  mutate(expr = logcounts(fit)["Jun",]) %>%
+  ggplot(aes(x = x, y = y)) +
+    ggrastr::rasterize(geom_point(aes(color = expr), size = pointsize, stroke = 0), dpi = 600) +
+    colorspace::scale_color_continuous_sequential(limits = c(0, quantile(logcounts(fit)["Jun",], c(0.98))), 
+                                                  oob = scales::oob_squish, palette = "Blues 2", n.breaks = 3) +
+    facet_grid(vars(inside), vars(sample), labeller = label_both) +
+    small_axis(label = "spatial coord.", fontsize = font_size_small) +
+    labs(color = "Jun Expression", subtitle = "") +
+    theme(legend.position = "bottom")
+```
+
+
+Jun / Amyloid-beta density scatter plot for each cell
+
+```{r, paged.print=FALSE}
+tibble(cell = colnames(fit),
+       density_binned = fit$colData$plaque_cluster,
+       density = fit$colData$plaque_density,
+       expr = logcounts(fit)["Jun",]) %>%
+  mutate(density_binned = ordered(density_binned, levels = levels(fit$colData$plaque_cluster))) %>% 
+  mutate(inside = cell %in% nei$neighborhood[[1]]) %>%
+  ggplot(aes(x = density, y = expr)) +
+    geom_point(size = 0.01) +
+    geom_smooth() +
+    facet_wrap(vars(inside))
+```
+
+With pseudobulking
+
+```{r}
+#| label: fig_plaque_density_vs_jun_expression
+#| paged.print: FALSE
+#| fig-width: 2
+#| fig-height: 2
+#| fig-dpi: 600
+genes_of_interest <- nei$name[1]
+mask <- matrix(NA, nrow = length(genes_of_interest), ncol = ncol(fit), 
+               dimnames = list(genes_of_interest, colnames(fit)))
+mask2 <- matrix(1, nrow = length(genes_of_interest), ncol = ncol(fit), 
+               dimnames = list(genes_of_interest, colnames(fit)))
+for(id in genes_of_interest){
+  mask[id, filter(nei, name == id)$neighborhood[[1]]] <- 1
+  mask2[id, filter(nei, name == id)$neighborhood[[1]]] <- NA
+}
+
+psce2 = glmGamPoi::pseudobulk(SingleCellExperiment(list(inside = as.matrix(logcounts(fit)[genes_of_interest,,drop=FALSE] * mask),
+                                                       outside = as.matrix(logcounts(fit)[genes_of_interest,,drop=FALSE] * mask2))),
+                      group_by = vars(sample, density_binned=plaque_cluster), n = n(), density = mean(plaque_density),
+                      aggregation_functions = list(.default = \(...) matrixStats::rowMeans2(..., na.rm = TRUE)),
+                      col_data = as.data.frame(colData(fit)))
+
+comparison_data = as_tibble(colData(psce2)) |>
+  mutate(expr_inside  = as_tibble(t(assay(psce2, "inside"))),
+         expr_outside = as_tibble(t(assay(psce2, "outside")))) |>
+  unpack(starts_with("expr"), names_sep = "-") |>
+  pivot_longer(starts_with("expr"), names_sep = "[-_]", names_to = c(".value", "origin", "symbol")) 
+
+comparison_data |>
+  mutate(density_binned = ordered(density_binned, levels = levels(fit$colData$plaque_cluster))) |> 
+  ggplot(aes(x = density, y = expr)) +
+    geom_point(aes(color = origin), size = 0.3) +
+    geom_smooth(aes(color = origin), span = 1.75, se = FALSE, linewidth = 1.5) +
+    scale_inside_outside +
+    scale_y_continuous(limits = c(0, 0.3), expand = expansion(add = 0)) +
+    theme(legend.position = "bottom") +
+    labs(y = "Jun expression", x = "plaque density", subtitle = "") 
+```
+
+
+# Detailed analysis
+
+Is it confounded?
+
+No the Jun dependence on plaque density holds within the arrow-like shape.
+
+
+```{r, paged.print=FALSE}
+data <- as_tibble(colData(fit), rownames = "cell") %>%
+  mutate(inside = cell %in% nei$neighborhood[[1]]) %>%
+  mutate(expr = logcounts(fit)["Jun",]) 
+
+clustered_data <- data %>%
+  filter(inside) %>%
+  group_by(sample) %>%
+  mutate(cluster = dbscan::hdbscan(cbind(.data$x, .data$y), minPts = 100)$cluster)
+
+clustered_data %>%
+  ggplot(aes(x = x, y = y)) +
+    geom_point(aes(color = as.factor(cluster))) +
+    facet_wrap(vars(sample))
+```
+
+
+```{r, paged.print=FALSE}
+clustered_data %>%
+  ggplot(aes(x = plaque_density, y = expr)) +
+    geom_point() +
+    geom_smooth() +
+    facet_grid(vars(sample), vars(cluster))
+
+```
+
+
