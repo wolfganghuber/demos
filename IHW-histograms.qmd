@@ -1,0 +1,61 @@
+---
+title: "IHW histograms"
+author: "Wolfgang Huber"
+date: "2024-04-15"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    toc: true
+    css: wh.css
+highlight-style: tango
+---
+
+```{r initialize}
+#| label: init
+#| echo: false
+#| cache: false
+## Set default options for code chunks
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+```{r}
+#| label: loadpkgs
+#| message: false
+#| cache: false
+library("ggplot2")
+library("dplyr")
+```
+```{r}
+hypotheses_per_group = 30000
+sigma = 1
+dm = c(A = 0, B = 0.33, C = 0.45)
+ns = 10
+x = lapply(names(dm), function(i) {
+  m = cbind(matrix(rnorm(ns * hypotheses_per_group, mean = 0, sd = sigma), nrow = hypotheses_per_group, ncol = ns),
+            matrix(rnorm(ns * hypotheses_per_group, mean = dm[i], sd = sigma), nrow = hypotheses_per_group, ncol = ns)) 
+  p = genefilter::rowttests(m, fac = factor(rep(c("A", "B"), each = ns)))$p.value
+  tibble(p = p, grp = i)
+}) |> bind_rows()
+```
+```{r}
+#| label: fig_hist_combined
+#| fig-width: 3
+#| fig-height: 3
+#| fig-dpi: 600
+#| out-width: "400px"
+gg = ggplot(x, aes(x = p)) +
+    geom_histogram(boundary = 0, bins = 50) +
+    labs(y = "frequency", x = "p") +
+    geom_vline(xintercept = 0.05, col="red")
+gg
+```
+```{r}
+#| label: fig_hist_stratified
+#| fig-width: !expr 3*length(dm)
+#| fig-height: 3
+#| fig-dpi: 600
+#| out-width: "1200px"
+gg + facet_grid(cols = vars(grp))
+```
+
+
