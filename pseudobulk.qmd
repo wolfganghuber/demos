@@ -16,7 +16,7 @@ highlight-style: tango
 #| echo: false
 #| cache: false
 ## Set default options for code chunks
-knitr::opts_chunk$set(cache = TRUE, autodep = TRUE)
+knitr::opts_chunk$set(cache = FALSE)
 ```
 ```{r}
 #| label: loadpkgs
@@ -27,46 +27,51 @@ library("dplyr")
 ```
 
 ```{r}
+#| label: data
+#| echo: FALSE
 x = read.csv(textConnection(
 "gene, celltype, condition, value
- gene A, differentiating enterocytes,     WT,     2.0
- gene A, differentiating enterocytes,     WT,     1.8
- gene A, differentiating enterocytes,     WT,     2.3
- gene A, differentiating enterocytes,     Δusp,   1.9
- gene A, differentiating enterocytes,     Δusp,   1.7
- gene A, differentiating enterocytes,     Δusp,   2.25
- gene A, enterocytes,     WT,  3.3            
- gene A, enterocytes,     WT,  2.9
- gene A, enterocytes,     WT,  3.0
- gene A, enterocytes,     Δusp,  3.2
- gene A, enterocytes,     Δusp,  2.8
- gene A, enterocytes,     Δusp,  3.1
- gene A, stem cells/enteroblasts,     WT,     2.4
- gene A, stem cells/enteroblasts,     WT,     2.6
- gene A, stem cells/enteroblasts,     WT,     2.45
- gene A, stem cells/enteroblasts,     Δusp,    3.2
- gene A, stem cells/enteroblasts,     Δusp,    3.7
- gene A, stem cells/enteroblasts,     Δusp,    2.8 
- gene B, celltype, condition, value
- gene B, differentiating enterocytes,     WT,     2.0
- gene B, differentiating enterocytes,     WT,     1.8
- gene B, differentiating enterocytes,     WT,     2.3
- gene B, differentiating enterocytes,     Δusp,   1.9
- gene B, differentiating enterocytes,     Δusp,   1.7
- gene B, differentiating enterocytes,     Δusp,   2.25
- gene B, enterocytes,     WT,  3.3            
- gene B, enterocytes,     WT,  2.9
- gene B, enterocytes,     WT,  3.0
- gene B, enterocytes,     Δusp,  3.2
- gene B, enterocytes,     Δusp,  2.8
- gene B, enterocytes,     Δusp,  3.1
- gene B, stem cells/enteroblasts,     WT,     2.4
- gene B, stem cells/enteroblasts,     WT,     2.6
- gene B, stem cells/enteroblasts,     WT,     2.45
- gene B, stem cells/enteroblasts,     Δusp,    3.2
- gene B, stem cells/enteroblasts,     Δusp,    3.7
- gene B, stem cells/enteroblasts,     Δusp,    2.8" 
-), strip.white = TRUE)
+ gene A, A,     WT,     2.0
+ gene A, A,     WT,     1.8
+ gene A, A,     WT,     2.3
+ gene A, A,     Δusp,   1.9
+ gene A, A,     Δusp,   1.7
+ gene A, A,     Δusp,   2.25
+ gene A, B,     WT,  3.3            
+ gene A, B,     WT,  3.14
+ gene A, B,     WT,  3.0
+ gene A, B,     Δusp,  3.2
+ gene A, B,     Δusp,  2.98
+ gene A, B,     Δusp,  3.1
+ gene A, C,     WT,     2.4
+ gene A, C,     WT,     2.6
+ gene A, C,     WT,     2.45
+ gene A, C,     Δusp,    3.2
+ gene A, C,     Δusp,    3.7
+ gene A, C,     Δusp,    3.25 
+ gene B, A,     WT,     4.0
+ gene B, A,     WT,     3.8
+ gene B, A,     WT,     3.73
+ gene B, A,     Δusp,   1.9
+ gene B, A,     Δusp,   1.7
+ gene B, A,     Δusp,   2.25
+ gene B, B,     WT,  3.0            
+ gene B, B,     WT,  2.6
+ gene B, B,     WT,  2.65
+ gene B, B,     Δusp,  2.9
+ gene B, B,     Δusp,  2.55
+ gene B, B,     Δusp,  2.8
+ gene B, C,     WT,     3.5
+ gene B, C,     WT,     3.3
+ gene B, C,     WT,     3.2
+ gene B, C,     Δusp,    3.4
+ gene B, C,     Δusp,    3.1
+ gene B, C,     Δusp,    3.3" 
+), strip.white = TRUE, header = TRUE)
+x = mutate(x,
+  celltype = c(A = "EE", B = "dEC", C = "ISC/EB")[celltype] |> factor(levels = c("ISC/EB", "dEC", "EE"))
+  )
+stopifnot(is.numeric(x$value), !any(is.na(x$celltype)))
 ```
 ```{r}
 #| label: fig_hist_combined
@@ -75,5 +80,5 @@ x = read.csv(textConnection(
 #| fig-dpi: 600
 #| out-width: "400px"
 ggplot(x, aes(x = condition, y = value)) + geom_point() +
-  facet_grid(cols = vars(gene), rows = vars(celltype))
+  facet_grid(cols = vars(gene), rows = vars(celltype)) + ylim(c(1.6,4))
 ```
