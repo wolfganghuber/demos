@@ -1,0 +1,79 @@
+---
+title: "Pseudobulking"
+author: "Wolfgang Huber"
+date: "2024-04-17"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    toc: true
+    css: wh.css
+highlight-style: tango
+---
+
+```{r initialize}
+#| label: init
+#| echo: false
+#| cache: false
+## Set default options for code chunks
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+```{r}
+#| label: loadpkgs
+#| message: false
+#| cache: false
+library("ggplot2")
+library("dplyr")
+```
+
+```{r}
+x = read.csv(textConnection(
+"gene, celltype, condition, value
+ gene A, differentiating enterocytes,     WT,     2.0
+ gene A, differentiating enterocytes,     WT,     1.8
+ gene A, differentiating enterocytes,     WT,     2.3
+ gene A, differentiating enterocytes,     Δusp,   1.9
+ gene A, differentiating enterocytes,     Δusp,   1.7
+ gene A, differentiating enterocytes,     Δusp,   2.25
+ gene A, enterocytes,     WT,  3.3            
+ gene A, enterocytes,     WT,  2.9
+ gene A, enterocytes,     WT,  3.0
+ gene A, enterocytes,     Δusp,  3.2
+ gene A, enterocytes,     Δusp,  2.8
+ gene A, enterocytes,     Δusp,  3.1
+ gene A, stem cells/enteroblasts,     WT,     2.4
+ gene A, stem cells/enteroblasts,     WT,     2.6
+ gene A, stem cells/enteroblasts,     WT,     2.45
+ gene A, stem cells/enteroblasts,     Δusp,    3.2
+ gene A, stem cells/enteroblasts,     Δusp,    3.7
+ gene A, stem cells/enteroblasts,     Δusp,    2.8 
+ gene B, celltype, condition, value
+ gene B, differentiating enterocytes,     WT,     2.0
+ gene B, differentiating enterocytes,     WT,     1.8
+ gene B, differentiating enterocytes,     WT,     2.3
+ gene B, differentiating enterocytes,     Δusp,   1.9
+ gene B, differentiating enterocytes,     Δusp,   1.7
+ gene B, differentiating enterocytes,     Δusp,   2.25
+ gene B, enterocytes,     WT,  3.3            
+ gene B, enterocytes,     WT,  2.9
+ gene B, enterocytes,     WT,  3.0
+ gene B, enterocytes,     Δusp,  3.2
+ gene B, enterocytes,     Δusp,  2.8
+ gene B, enterocytes,     Δusp,  3.1
+ gene B, stem cells/enteroblasts,     WT,     2.4
+ gene B, stem cells/enteroblasts,     WT,     2.6
+ gene B, stem cells/enteroblasts,     WT,     2.45
+ gene B, stem cells/enteroblasts,     Δusp,    3.2
+ gene B, stem cells/enteroblasts,     Δusp,    3.7
+ gene B, stem cells/enteroblasts,     Δusp,    2.8" 
+), strip.white = TRUE)
+```
+```{r}
+#| label: fig_hist_combined
+#| fig-width: 3
+#| fig-height: 6
+#| fig-dpi: 600
+#| out-width: "400px"
+ggplot(x, aes(x = condition, y = value)) + geom_point() +
+  facet_grid(cols = vars(gene), rows = vars(celltype))
+```
