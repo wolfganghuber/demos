@@ -75,12 +75,13 @@ stopifnot(is.numeric(x$value), !any(is.na(x$celltype)))
 ```
 ```{r}
 #| label: fig_scatter
-#| fig-width: 3
-#| fig-height: 6
+#| fig-width: 4
+#| fig-height: 5
 #| fig-dpi: 600
 #| out-width: "400px"
 
 ggplot(x, aes(x = condition, y = value, col = celltype)) + geom_point() +
-  facet_grid(cols = vars(gene), rows = vars(celltype)) + ylim(c(1.6, 4)) +
-  scale_color_manual(values = c("aEC" = "#F8766D", "LFC/pEC" = "#B79F00", "ISC/EB" = "#619CFF", "dEC" =  "#00BA38"))
+  facet_grid(cols = vars(gene), rows = vars(celltype)) + ylab(expression(log[2](expr))) +
+  scale_color_manual(values = c("aEC" = "#F8766D", "LFC/pEC" = "#B79F00", "ISC/EB" = "#619CFF", "dEC" =  "#00BA38")) +
+  scale_y_continuous(breaks = seq(2, 4, 1), limits = c(1.6, 4.1)) 
 ```
