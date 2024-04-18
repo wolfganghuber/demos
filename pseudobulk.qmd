@@ -69,16 +69,18 @@ x = read.csv(textConnection(
  gene B, C,     Δusp,    3.3" 
 ), strip.white = TRUE, header = TRUE)
 x = mutate(x,
-  celltype = c(A = "EE", B = "dEC", C = "ISC/EB")[celltype] |> factor(levels = c("ISC/EB", "dEC", "EE"))
+  celltype = c(A = "aEC", B = "dEC", C = "ISC/EB")[celltype] |> factor(levels = c("ISC/EB", "dEC", "aEC"))
   )
 stopifnot(is.numeric(x$value), !any(is.na(x$celltype)))
 ```
 ```{r}
-#| label: fig_hist_combined
+#| label: fig_scatter
 #| fig-width: 3
 #| fig-height: 6
 #| fig-dpi: 600
 #| out-width: "400px"
-ggplot(x, aes(x = condition, y = value)) + geom_point() +
-  facet_grid(cols = vars(gene), rows = vars(celltype)) + ylim(c(1.6,4))
+
+ggplot(x, aes(x = condition, y = value, col = celltype)) + geom_point() +
+  facet_grid(cols = vars(gene), rows = vars(celltype)) + ylim(c(1.6, 4)) +
+  scale_color_manual(values = c("aEC" = "#F8766D", "LFC/pEC" = "#B79F00", "ISC/EB" = "#619CFF", "dEC" =  "#00BA38"))
 ```
