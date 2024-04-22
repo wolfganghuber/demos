@@ -89,6 +89,13 @@ spatial_plaq_dens_pl
 ### The `r nei$name` neighborhood
 
 ```{r}
+#| label: table
+tab = table(colData(fit)$sample, rownames(colData(fit)) %in% nei$neighborhood[[1]])
+tab
+round(tab/rowSums(tab)*100,1)
+```
+
+```{r}
 #| label: fig_spatial_jun_nbhood
 #| paged.print: FALSE
 #| fig-width: 3.2
