@@ -24,11 +24,12 @@ knitr::opts_chunk$set(cache = FALSE)
 #| cache: false
 library("ggplot2")
 library("dplyr")
+figsiz = 4
 ```
 ```{r}
 hypotheses_per_group = 10000
 sigma = 1
-dm = c(A = 0, B = 0.33, C = 0.45)
+dm = c(A = 0.05, B = 0.4, C = 0.55)
 ns = 10
 x = lapply(names(dm), function(i) {
   m = cbind(matrix(rnorm(ns * hypotheses_per_group, mean = 0, sd = sigma), nrow = hypotheses_per_group, ncol = ns),
@@ -39,8 +40,8 @@ x = lapply(names(dm), function(i) {
 ```
 ```{r}
 #| label: fig_hist_combined
-#| fig-width: 5
-#| fig-height: 5
+#| fig-width: !expr figsiz
+#| fig-height: !expr figsiz
 #| fig-dpi: 600
 #| out-width: "400px"
 makehist = function(x, group, alpha = 0.05, border = "#000000", ...) {
@@ -55,7 +56,7 @@ makehist = function(x, group, alpha = 0.05, border = "#000000", ...) {
     polygon(x = h$breaks[c(i, i+1, i+1, i)], y = c(n0, n0, h$counts[i], h$counts[i]), col = "#0057b8", border = border)      
   }
   c(yellow = n0*length(wh), 
-    blue = sum(h$counts[wh]) - n0*length(wh), 
+    `yellow + blue` = sum(h$counts[wh]), 
     FDR = round(n0*length(wh) / sum(h$counts[wh]), 3))
 }
   
@@ -63,11 +64,10 @@ makehist(x, names(dm))
 ```
 ```{r}
 #| label: fig_hist_stratified
-#| fig-width: !expr 5 * length(dm)
-#| fig-height: 5
+#| fig-width: !expr figsiz 
+#| fig-height: !expr figsiz
 #| fig-dpi: 600
-#| out-width: "1200px"
-par(mfrow = c(1, length(dm)))
+#| out-width: "400px"
 sapply(names(dm), function(g) makehist(x, g, ylim = c(0, 750)))
 ```
 
