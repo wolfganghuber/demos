@@ -1,0 +1,52 @@
+---
+title: "t-test"
+author: "Wolfgang Huber"
+date: "2025-06-20"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    css: wh.css
+---
+
+```{r}
+#| label: loadpkgs
+#| message: false
+#| cache: false
+library("ggplot2")
+library("dplyr")
+figsiz = 4
+```
+```{r}
+#| label: sim
+#| cache: true
+sim_null = tibble(
+  t = with(
+    dplyr::filter(PlantGrowth, group %in% c("ctrl", "trt2")),
+      replicate(10000, t.test(weight ~ sample(group), var.equal = TRUE)$statistic)
+      )
+  )
+sim_thresh = quantile(sim_null$t, c(0.025, 0.975))
+sim_null = mutate(sim_null, 
+                  reject = (t < sim_thresh[1]) | (t > sim_thresh[2])
+                  ) 
+ggplot(sim_null, aes(x = t, col = reject, fill = reject)) +
+       geom_bar(stat = "bin", binwidth = 0.2, center = 0) +
+       scale_colour_manual(values = c(`TRUE` = "red", `FALSE` = "darkgrey")) +
+       scale_fill_manual(values = c(`TRUE` = "red", `FALSE` = "darkgrey"))
+```
+
+```{r}
+#| label: theo
+n1n2 = filter(PlantGrowth, group %in% c("ctrl", "trt2"))$group |> factor() |> table()
+theo_thresh = qt(c(0.025, 0.975), df =  sum(n1n2) - 2)
+theo_null = tibble(
+  t = seq(-5, 5, by = 0.05),
+  density = dt (x = t, df = sum(n1n2) - 2),
+  reject = (t < theo_thresh[1]) | (t > theo_thresh[2])
+)
+ggplot(theo_null, aes(x = t, y = density, col = reject, fill = reject)) +
+       geom_line() +
+       scale_colour_manual(values = c(`TRUE` = "red", `FALSE` = "darkgrey")) +
+       scale_fill_manual(values = c(`TRUE` = "red", `FALSE` = "darkgrey"))
+```
