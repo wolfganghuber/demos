@@ -9,53 +9,53 @@ format:
     css: wh.css
 ---
 
+See also the exercise `{#wrn-testing-tnull .callout-warning}` in Chapter 6 of the MSMB book, which is essentially the same.
+
 ```{r}
 #| label: loadpkgs
 #| message: false
 #| cache: false
 library("ggplot2")
 library("dplyr")
-figsiz = c(4, 4)
+figsiz = c(6, 3)
 ```
 ```{r}
 #| label: sim
 #| cache: true
 #| fig.dim: !expr figsiz
-alpha = 0.05
+#| layout-ncol: 2
+plgr = dplyr::filter(PlantGrowth, group %in% c("ctrl", "trt1"))
+
+alpha  = 0.05
 xrange = 5 * c(-1, 1)
 deckel = function(x) ifelse(x < xrange[1], xrange[1], ifelse(x > xrange[2], xrange[2], x))
+
+t0 = t.test(weight ~ sample(group), var.equal = TRUE, data = plgr)$statistic
+
 sim_null = tibble(
-  t = with(
-    dplyr::filter(PlantGrowth, group %in% c("ctrl", "trt2")),
-      replicate(10000, t.test(weight ~ sample(group), var.equal = TRUE)$statistic)
-      )
-  )
+  t = replicate(10000, t.test(weight ~ sample(group), var.equal = TRUE, data = plgr)$statistic |> deckel())
+)
 sim_thresh = quantile(sim_null$t, c(alpha/2, 1-alpha/2))
 sim_null = mutate(sim_null, 
-                  reject = ifelse(t < sim_thresh[1], "low", ifelse(t > sim_thresh[2], "high", "none"))
-                  ) 
-ggplot(sim_null, aes(x = deckel(t), col = reject, fill = reject)) +
-       geom_bar(stat = "bin", binwidth = 0.2, center = 0) +
-       scale_colour_manual(values = c(low = "blue", high = "red", none = "darkgrey")) +
-       scale_fill_manual(values = c(low = "blue", high = "red", none = "darkgrey")) + 
-       xlim(xrange) +
-       theme(legend.position = "none") 
-```
+  reject = ifelse(t <= sim_thresh[1], "low", ifelse(t > sim_thresh[2], "high", "none"))
+) 
 
-```{r}
-#| label: theo
-#| fig.dim: !expr figsiz
-n1n2 = filter(PlantGrowth, group %in% c("ctrl", "trt2"))$group |> factor() |> table()
-theo_thresh = qt(c(alpha/2, 1-alpha/2), df =  sum(n1n2) - 2)
+theo_thresh = qt(c(alpha/2, 1-alpha/2), df =  nrow(plgr) - 2)
 theo_null = tibble(
   t = seq(-5, 5, by = 0.05),
-  density = dt (x = t, df = sum(n1n2) - 2),
-  reject = ifelse(t < theo_thresh[1], "low", ifelse(t > theo_thresh[2], "high", "none"))
+  density = dt (x = t, df = nrow(plgr)  - 2),
+  reject = ifelse(t <= theo_thresh[1], "low", ifelse(t > theo_thresh[2], "high", "none"))
 )
-ggplot(theo_null, aes(x = t, y = density, col = reject, fill = reject)) +
-       geom_area() +
-       scale_colour_manual(values = c(low = "blue", high = "red", none = "darkgrey")) +
-       scale_fill_manual(values = c(low = "blue", high = "red", none = "darkgrey"))  + 
-       xlim(xrange) +
-       theme(legend.position = "none") 
+
+p1 = ggplot(sim_null, aes(x = t, col = reject, fill = reject)) +
+       geom_bar(stat = "bin", breaks = seq(-5, 5, by = 0.2)) 
+p2 = ggplot(theo_null, aes(x = t, y = density, col = reject, fill = reject)) +
+       geom_area() 
+
+for (p in list(p1, p2))
+  print(p + 
+        geom_vline(xintercept = t0, col = "#101010") +
+        scale_colour_manual(values = c(low = "blue", high = "red", none = "darkgrey")) +
+        scale_fill_manual(values = c(low = "blue", high = "red", none = "darkgrey")) + 
+        xlim(xrange) + theme(legend.position = "none"))
 ```
