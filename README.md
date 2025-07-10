@@ -4,4 +4,4 @@ This repository contains various demos
 
 - IWH-demo.qmd draws p-value histograms with and without stratification
 
-- lemur-alzheimer.qmd is for the LEMUR Alzheimer data demo I used for the GB unit review.
+- lemur:  alzheimer.qmd is for the LEMUR Alzheimer data demo I used for the GB unit review 2024; two-dimensional-toy-example is used in teaching talks (e.g. CSAMA)
