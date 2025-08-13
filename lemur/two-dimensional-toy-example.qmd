@@ -204,6 +204,29 @@ pl_proj
 ```
 
 ```{r}
+pl_proj_with_diff = tibble(celltype = celltype_assign, condition = cond_assign,emb = fit$embedding[1,]) %>%
+  mutate(diff = as_tibble(t(Y_pred_trt - Y_pred_ctrl), .name_repair = \(.) c("Gene 1", "Gene 2"))) %>%
+  unpack(diff, names_sep = "-") %>%
+  pivot_longer(starts_with("diff"), names_sep = "-", names_to = c(".value", "Gene")) %>%
+  ggplot(aes(x = emb, y = diff)) +
+    geom_segment(aes(xend = emb, yend = 0, color = condition), lwd = 0.3, show.legend = FALSE) +
+    # geom_segment(data = true_de, aes(x = emb - 0.4, xend = emb + 0.4, y = de, yend = de), lwd = 0.8, color = "black", linetype = "solid") +
+    annotate_subspace() +
+    annotate_ticks(length = 0.3) +
+    annotate_labels_along(at = -5:5, labels = -5:5, offset = -0.4, size = font_size_tiny / .pt, extra_df = tibble(Gene = "Gene 1")) +
+    annotate_labels_along(at = -5:5, labels = -5:5, offset =  0.4, size = font_size_tiny / .pt, extra_df = tibble(Gene = "Gene 2")) +
+    scale_color_manual(values = c("control" = "#FC8D62", "treated" = "#8DA0CB")) +
+    scale_x_continuous(expand = expansion(add = 0)) +
+    facet_wrap(vars(Gene), nrow = 1, scales = "free_y") +
+    lims(x = c(-2.7, 2.8), y = c(-1.5,2.2)) +
+    labs(x = "Embedding Position ($\\matr{Z}$)", y = "$\\matr{\\Delta}$ (Treated - Control)") +
+    theme(axis.ticks.x = element_blank(), axis.text.x = element_blank(), axis.line.x = element_blank(),
+          panel.spacing.x = unit(3, "mm"))
+
+pl_proj_with_diff
+```
+
+```{r}
 plot_assemble(
   add_text("(A)", x = 0.5, y = 0.5, vjust = 1, fontsize = font_size, fontface = "bold"),
   add_plot(pl2, x = 2, y = 0, width = 75, height = 40),
@@ -262,3 +285,14 @@ plot_assemble(
 pdftools::pdf_convert("out/simulated_data_projected.pdf", dpi = 600,
                       filenames = "out/simulated_data_projected.png")
 ```
+
+```{r}
+plot_assemble(
+  add_plot(pl_proj_with_diff, x = 2, y = 0, width = 60, height = 30),
+  width = 65, height = 35, units = "mm", show_grid_lines = FALSE,
+  latex_support = TRUE, filename = "out/simulated_data_projected_with_diff.pdf"
+)
+pdftools::pdf_convert("out/simulated_data_projected_with_diff.pdf", dpi = 600,
+                      filenames = "out/simulated_data_projected_with_diff.png")
+```
+
