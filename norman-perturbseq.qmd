@@ -1,0 +1,83 @@
+---
+title: "Explore the Norman data"
+author: "Wolfgang Huber"
+date: "2025-11-14"
+format:
+  html:
+    embed-resources: true
+    page-layout: full
+    css: wh.css
+---
+    
+# Read
+
+## First attempt
+
+h5ad files from <https://www.kaggle.com/datasets/alexandervc/scrnaseq-crisprperturbseqnormanselectedpart?resource=download>. Looks elegant, but for now, too complicated for me, since the below option from txt files also works.
+
+```{r}
+#| label: readh5ad
+#| cache: false
+#| eval: false
+library("anndata")
+x =  read_h5ad("GSE133344_Human_K562_CDKN1Arelatedknockouts_Y2019_452Cells_GEO_Counts_Norman_Weissman.h5ad")
+x
+head(x$obs)
+x$shape
+```
+
+## Second attempt
+
+The following files were downloaded from <https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE146194>, e.g.: <https://ftp.ncbi.nlm.nih.gov/geo/series/GSE146nnn/> and <https://ftp.ncbi.nlm.nih.gov/geo/series/GSE146nnn/GSE146194/matrix/>.
+
+To do: download the whole set of experiments
+
+```{r}
+#| label: readtxt
+#| message: false
+path = "norman-perturbseq-data"
+files = dir(path, pattern = "GSM.*txt")
+v = lapply(file.path(path, files), readr::read_tsv, show_col_types = FALSE)
+```
+
+# Arrange
+
+```{r}
+#| label: mat
+genes = v[[1]][[1]]
+samples = sub(".txt$", "", sub("^[[:alnum:]]+_", "", files))  
+
+mat = matrix(NA_real_, nrow = length(genes), ncol = length(v))
+rownames(mat) = genes
+colnames(mat) = samples
+for (i in seq(along = v)) {
+  stopifnot(identical(genes, v[[i]][[1]]))
+  mat[, i] = v[[i]][[2]]
+}
+```
+
+# Plot
+
+**Note the `asinh` transformation!**
+
+```{r}
+#| label: pairs
+#| fig.dim: !expr c(12, 12)
+#| message: false
+library("GGally")
+panelargs = list(continuous = 
+  function(data, mapping, ...) {
+    ggplot(data = data, mapping = mapping) +
+      geom_point(size = 0.1, alpha = 0.5) +
+      geom_abline(intercept = 0, slope = 1, color = "red") +
+      coord_fixed()
+  })
+ggpairs(as.data.frame(asinh(mat[, 1:8])), 
+        upper = panelargs, lower = panelargs)
+ggpairs(as.data.frame(asinh(mat[, 9:16])), 
+        upper = panelargs, lower = panelargs)
+ggpairs(as.data.frame(asinh(mat[, 17:24])), 
+        upper = panelargs, lower = panelargs)
+```
+
+There is something funky about the axis labels... not sure why.
