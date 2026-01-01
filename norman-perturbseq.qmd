@@ -1,22 +1,52 @@
 ---
 title: "Explore the Norman data"
 author: "Wolfgang Huber"
-date: "2025-11-14"
+date: "2026-01-01"
 format:
   html:
-    embed-resources: true
+    embed-resources: false
     page-layout: full
     css: wh.css
+    toc: true
 ---
-    
+
 # Read
 
-## First attempt
+```{r}
+#| label: global_options
+#| echo: false
+#| message: false
+knitr::opts_chunk$set(cache = TRUE)
+# options(error = recover)
+library("assertthat")
+library("sparseMatrixStats")
+library("dplyr")
+library("ggplot2")
+```
 
-h5ad files from <https://www.kaggle.com/datasets/alexandervc/scrnaseq-crisprperturbseqnormanselectedpart?resource=download>. Looks elegant, but for now, too complicated for me, since the below option from txt files also works.
+# Load data
+
+## Load data V1: from scFoundation
+
+This is what is being used: h5ad file from `/g/huber/users/ahlmanne/projects/perturbation_prediction-benchmark/data/norman_from_scfoundation_data.zip`
 
 ```{r}
-#| label: readh5ad
+#| label: loadv1
+#| cache: false
+#| eval: true
+library("anndata")
+ad =  read_h5ad("norman-perturbseq-data/scFoundation/GEARS/data/gse133344_k562gi_oe_pert227_84986_19264_withtotalcount.h5ad")
+ad
+head(ad$obs)
+ad$shape
+```
+
+## Load data V2: from Kaggle 
+
+Not used: h5ad files from <https://www.kaggle.com/datasets/alexandervc/scrnaseq-crisprperturbseqnormanselectedpart?resource=download>. 
+
+```{r}
+#| label: loadv2
 #| cache: false
 #| eval: false
 library("anndata")
@@ -26,39 +56,41 @@ head(x$obs)
 x$shape
 ```
 
-## Second attempt
+## Load data V3: from GEO
 
-The following files were downloaded from <https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE146194>, e.g.: <https://ftp.ncbi.nlm.nih.gov/geo/series/GSE146nnn/> and <https://ftp.ncbi.nlm.nih.gov/geo/series/GSE146nnn/GSE146194/matrix/>.
-
-To do: download the whole set of experiments
+Not used: the file `GSE146194_RAW.tar` was downloaded from <https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE146194> and untarred. 
 
 ```{r}
-#| label: readtxt
+#| label: loadv3
 #| message: false
+#| eval: false
 path = "norman-perturbseq-data"
-files = dir(path, pattern = "GSM.*txt")
-v = lapply(file.path(path, files), readr::read_tsv, show_col_types = FALSE)
+assert_that(dir.exists(path))
+files = c("GSM4367979_exp1-5.matrix.mtx.gz", "GSM4367984_exp6.matrix.mtx.gz", "GSM4367985_exp7.matrix.mtx.gz", "GSM4367986_exp8.matrix.mtx.gz", "GSM4367987_exp9.matrix.mtx.gz", "GSM4367988_exp10.matrix.mtx.gz", "GSM4367989_exp11.matrix.mtx.gz")
+# does not work
+# v = lapply(file.path(path, files), readr::read_tsv, show_col_types = FALSE, n_max = 10)
 ```
 
-# Arrange
+# Pseudobulk
 
 ```{r}
-#| label: mat
-genes = v[[1]][[1]]
-samples = sub(".txt$", "", sub("^[[:alnum:]]+_", "", files))  
-
-mat = matrix(NA_real_, nrow = length(genes), ncol = length(v))
-rownames(mat) = genes
-colnames(mat) = samples
-for (i in seq(along = v)) {
-  stopifnot(identical(genes, v[[i]][[1]]))
-  mat[, i] = v[[i]][[2]]
-}
+#| label: pseudobulk1
+spl = split(seq_along(ad$obs$condition), ad$obs$condition)
+numCells = sapply(spl, length)
+length(spl)
+hist(log10(numCells), 30)
+```
+```{r}
+#| label: pseudobulk2
+#| fig.dim: !expr c(3, 2.5)
+mat = matrix(NA_real_, nrow = dim(ad)[2], ncol = length(spl))
+for (i in seq_along(spl))
+  mat[, i] = sparseMatrixStats::colSums2(ad$X[spl[[i]], , drop = FALSE ])
 ```
 
 # Plot
 
-**Note the `asinh` transformation!**
+Note the `asinh` transformation.
 
 ```{r}
 #| label: pairs
@@ -68,16 +100,20 @@ library("GGally")
 panelargs = list(continuous = 
   function(data, mapping, ...) {
     ggplot(data = data, mapping = mapping) +
-      geom_point(size = 0.1, alpha = 0.5) +
+      geom_point(size = 0.1, alpha = 1) +
       geom_abline(intercept = 0, slope = 1, color = "red") +
       coord_fixed()
   })
-ggpairs(as.data.frame(asinh(mat[, 1:8])), 
-        upper = panelargs, lower = panelargs)
-ggpairs(as.data.frame(asinh(mat[, 9:16])), 
-        upper = panelargs, lower = panelargs)
-ggpairs(as.data.frame(asinh(mat[, 17:24])), 
-        upper = panelargs, lower = panelargs)
+ggpairs(as.data.frame(asinh(mat[, 1:6])), upper = panelargs, lower = panelargs)
 ```
 
 There is something funky about the axis labels... not sure why.
+
+# Size Factors
+
+```{r}
+#| label: sizefactors
+#| fig.dim: !expr c(8, 3)
+sf = DESeq2::estimateSizeFactorsForMatrix(mat)
+ggplot(tibble(i = seq(along = sf), sf =sf), aes(x = i, y = sf)) + geom_point()
+```
