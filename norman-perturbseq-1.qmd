@@ -1,7 +1,8 @@
 ---
 title: "Explore the Norman data"
+subtitle: "Step 1: load the single data and compute pseudobulk"
 author: "Wolfgang Huber"
-date: "2026-01-01"
+date: "2026-01-02"
 format:
   html:
     embed-resources: false
@@ -10,19 +11,17 @@ format:
     toc: true
 ---
 
-# Read
+# Setup
 
 ```{r}
-#| label: global_options
+#| label: setup
 #| echo: false
 #| message: false
 #| warning: false
 knitr::opts_chunk$set(cache = TRUE)
-# options(error = recover)
 library("assertthat")
 library("sparseMatrixStats")
 library("dplyr")
-library("ggplot2")
 ```
 
 # Load data
@@ -74,7 +73,19 @@ files = c("GSM4367979_exp1-5.matrix.mtx.gz", "GSM4367984_exp6.matrix.mtx.gz", "G
 
 # Pseudobulk
 
-Split by condition
+Split by condition.
+
+First, we see that among the three variables 
+`condition`, `cell_type_condition` and `condition_name` in `ad$obs` there is no relevant difference.
+
+```{r}
+#| label: pseudobulk0
+assert_that(
+  all(as.integer(as.factor(ad$obs$cell_type_condition)) == as.integer(as.factor(ad$obs$condition))),
+  all(as.integer(as.factor(ad$obs$condition_name)) == as.integer(as.factor(ad$obs$condition)))
+)
+```
+
 ```{r}
 #| label: pseudobulk1
 spl = split(seq_along(ad$obs$condition), ad$obs$condition)
@@ -98,32 +109,3 @@ Save
 save(mat, file = "norman-perturbseq-mat.RData")
 ```
 
-# Plot
-
-Note the `asinh` transformation.
-
-```{r}
-#| label: pairs
-#| fig.dim: !expr c(12, 12)
-#| message: false
-library("GGally")
-panelargs = list(continuous = 
-  function(data, mapping, ...) {
-    ggplot(data = data, mapping = mapping) +
-      geom_point(size = 0.1, alpha = 1) +
-      geom_abline(intercept = 0, slope = 1, color = "red") +
-      coord_fixed()
-  })
-ggpairs(as.data.frame(asinh(mat[, 1:6])), upper = panelargs, lower = panelargs)
-```
-
-There is something funky about the axis labels... not sure why.
-
-# Size Factors
-
-```{r}
-#| label: sizefactors
-#| fig.dim: !expr c(8, 3)
-sf = DESeq2::estimateSizeFactorsForMatrix(mat)
-ggplot(tibble(i = seq(along = sf), sf =sf), aes(x = i, y = sf)) + geom_point()
-```
