@@ -1,0 +1,129 @@
+---
+title: "Explore the Norman data"
+author: "Wolfgang Huber"
+date: "2026-01-01"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    css: wh.css
+    toc: true
+---
+
+# Read
+
+```{r}
+#| label: global_options
+#| echo: false
+#| message: false
+#| warning: false
+knitr::opts_chunk$set(cache = TRUE)
+# options(error = recover)
+library("assertthat")
+library("sparseMatrixStats")
+library("dplyr")
+library("ggplot2")
+```
+
+# Load data
+
+## Load data V1: from scFoundation
+
+This is what is being used: h5ad file from `/g/huber/users/ahlmanne/projects/perturbation_prediction-benchmark/data/norman_from_scfoundation_data.zip`
+
+```{r}
+#| label: loadv1
+#| cache: false
+#| eval: true
+library("anndata")
+ad =  read_h5ad("norman-perturbseq-data/scFoundation/GEARS/data/gse133344_k562gi_oe_pert227_84986_19264_withtotalcount.h5ad")
+ad
+head(ad$obs)
+ad$shape
+```
+
+## Load data V2: from Kaggle (not used)
+
+h5ad files from <https://www.kaggle.com/datasets/alexandervc/scrnaseq-crisprperturbseqnormanselectedpart?resource=download>. 
+
+```{r}
+#| label: loadv2
+#| cache: false
+#| eval: false
+library("anndata")
+x =  read_h5ad("GSE133344_Human_K562_CDKN1Arelatedknockouts_Y2019_452Cells_GEO_Counts_Norman_Weissman.h5ad")
+x
+head(x$obs)
+x$shape
+```
+
+## Load data V3: from GEO (not used)
+
+The file `GSE146194_RAW.tar` was downloaded from <https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE146194> and untarred. 
+
+```{r}
+#| label: loadv3
+#| message: false
+#| eval: false
+path = "norman-perturbseq-data"
+assert_that(dir.exists(path))
+files = c("GSM4367979_exp1-5.matrix.mtx.gz", "GSM4367984_exp6.matrix.mtx.gz", "GSM4367985_exp7.matrix.mtx.gz", "GSM4367986_exp8.matrix.mtx.gz", "GSM4367987_exp9.matrix.mtx.gz", "GSM4367988_exp10.matrix.mtx.gz", "GSM4367989_exp11.matrix.mtx.gz")
+# does not work
+# v = lapply(file.path(path, files), readr::read_tsv, show_col_types = FALSE, n_max = 10)
+```
+
+# Pseudobulk
+
+Split by condition
+```{r}
+#| label: pseudobulk1
+spl = split(seq_along(ad$obs$condition), ad$obs$condition)
+numCells = sapply(spl, length)
+length(spl)
+hist(log10(numCells), 30)
+```
+Construct count matrix
+```{r}
+#| label: pseudobulk2
+mat = matrix(NA_real_, nrow = dim(ad)[2], ncol = length(spl))
+rownames(mat) = ad$var$gene_name
+colnames(mat) = names(spl)
+for (i in names(spl))
+  mat[, i] = sparseMatrixStats::colSums2(ad$X[spl[[i]], , drop = FALSE ])
+```
+
+Save
+```{r}
+#| label: save
+save(mat, file = "norman-perturbseq-mat.RData")
+```
+
+# Plot
+
+Note the `asinh` transformation.
+
+```{r}
+#| label: pairs
+#| fig.dim: !expr c(12, 12)
+#| message: false
+library("GGally")
+panelargs = list(continuous = 
+  function(data, mapping, ...) {
+    ggplot(data = data, mapping = mapping) +
+      geom_point(size = 0.1, alpha = 1) +
+      geom_abline(intercept = 0, slope = 1, color = "red") +
+      coord_fixed()
+  })
+ggpairs(as.data.frame(asinh(mat[, 1:6])), upper = panelargs, lower = panelargs)
+```
+
+There is something funky about the axis labels... not sure why.
+
+# Size Factors
+
+```{r}
+#| label: sizefactors
+#| fig.dim: !expr c(8, 3)
+sf = DESeq2::estimateSizeFactorsForMatrix(mat)
+ggplot(tibble(i = seq(along = sf), sf =sf), aes(x = i, y = sf)) + geom_point()
+```
