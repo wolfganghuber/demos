@@ -42,8 +42,7 @@ load("norman-perturbseq-mat.RData")
 sf = DESeq2::estimateSizeFactorsForMatrix(mat)
 last(colnames(mat))
 ggplot(tibble(i = seq(along = sf), sf = sf), aes(x = i, y = sf)) + 
-  geom_point() +
-  scale_y_log10()
+  geom_point() + scale_y_log10()
 ```
 ```{r}
 #| label: sizefactors2
@@ -79,9 +78,10 @@ nmat[, c(sampledcolumns, last(colnames(mat)))] |>
     facet_wrap(vars(sample))
 ```
 
-## Dimension reduction
+# Dimension reduction
 
 We 
+
 - select the top 500 most highly expressed genes,
 - could, but do not remove the mitochondrial and ribosomal genes,
 - compute logratios,
@@ -89,7 +89,7 @@ We
 
 ```{r}
 #| label: dimred
-#| fig.dim: !expr c(5, 3)
+#| fig.dim: !expr c(5, 2.2)
 ntop = 500
 snmat = nmat[order(rowMeans(nmat), decreasing = TRUE)[1:ntop], ]
 
@@ -111,7 +111,7 @@ lapply(c("PC1", "PC2"), function(i)
 )
 ```
 
-Claude summaries the above genes like this:
+Claude summarizes the above genes like this:
 
 **PC axis 1**: These genes are primarily involved in:
 
@@ -136,21 +136,25 @@ K562 is a CML cell line with the  BCR-ABL1-fusion.
 pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition")
 ggplot(pca2d, aes(x = PC1, y = PC2, label = condition)) + geom_point() + 
        ggrepel::geom_label_repel() + coord_fixed()
+pca$sdev[1:2]^2 |> signif(3)
 with(pca2d, c(var(PC1), var(PC2))) |> signif(3)
 ```
 
 The dimension reduced data with which we continue:
+
 ```{r}
 #| label: dx
-dx = t(pca$x[, 1:10])
-dx[1:3, 1:8]
+dx = t(pca$x[, 1:20])
+dx[1:3, 1:8] |> signif(3)
 dim(dx)
+dx %*% t(dx) |> round(3)
 ```
 
+Note the orthogonality.
 
 # Compare double to single perturbations
 
-## Find our way around them, and arrange 
+## Find our way around and arrange 
 
 ```{r}
 #| label: perts
@@ -158,7 +162,7 @@ perts = stringr::str_split_fixed(colnames(lrmat), pattern = stringr::fixed("+"),
 table(perts)
 ```
 
-Find the combinations and the corresponding controls. `combs` is a dataframe with indices into the columns of `nmat`
+Find the double perturbations (`doubles`) and the corresponding pair of single perturbations (`single1`, `single2`). `combs` is a dataframe with indices into the columns of `nmat`
 
 ```{r}
 #| label: combs
@@ -170,7 +174,10 @@ combs = lapply(seq_along(doubles), function(i) {
   tibble(double = doubles[i], single1 = s1, single2 = s2)
 }) |> bind_rows()
 combs
-combsdf = data.frame(double = colnames(dx)[combs$double], single1 = colnames(dx)[combs$single1], single2 = colnames(dx)[combs$single2]) 
+combsdf = data.frame(
+  double  = colnames(dx)[combs$double], 
+  single1 = colnames(dx)[combs$single1], 
+  single2 = colnames(dx)[combs$single2]) 
 knitr::kable(combsdf)
 ```
 
@@ -189,8 +196,13 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
 ```
 ```{r}
 #| label: showfit
-#| fig.dim: !expr c(3.5, 3.5)
+#| fig.dim: !expr c(5, 3)
+#| out.width: "100%"
 #| eval: true
-ggplot(fits, aes(x = beta1, y = beta2, col = log(res))) + geom_point() + coord_fixed()
-ggplot(filter(fits, res <= median(res)), aes(x = beta1, y = beta2)) + geom_point() + coord_fixed()
+r = range(with(fits, c(beta1, beta2)))
+b = floor(r[1]):ceiling(r[2])
+ggplot(fits, aes(x = beta1, y = beta2, col = log(res))) + 
+  geom_abline(slope = -1, intercept = 1.5) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
+ggplot(fits, aes(x = beta1, y = beta2, col = res <= median(res))) + 
+  geom_abline(slope = -1, intercept = 1.5) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
 ```
