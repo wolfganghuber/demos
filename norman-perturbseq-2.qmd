@@ -191,7 +191,7 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
     x1 = dx[, combs$single1[i]],
     x2 = dx[, combs$single2[i]])
   fit = lm(y ~ 0 + x1 + x2, data = df)
-  tibble(beta1 = coef(fit)[1], beta2 = coef(fit)[2], res = mean(residuals(fit)^2))
+  tibble(beta1 = coef(fit)[1], beta2 = coef(fit)[2], res = mean(residuals(fit)^2), rsq = summary(fit)$r.squared)
 }) |> bind_rows() |> bind_cols(combs)
 ```
 ```{r}
@@ -201,8 +201,10 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
 #| eval: true
 r = range(with(fits, c(beta1, beta2)))
 b = floor(r[1]):ceiling(r[2])
-ggplot(fits, aes(x = beta1, y = beta2, col = log(res))) + 
-  geom_abline(slope = -1, intercept = 1.5) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
-ggplot(fits, aes(x = beta1, y = beta2, col = res <= median(res))) + 
-  geom_abline(slope = -1, intercept = 1.5) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
+ggplot(fits, aes(x = beta1, y = beta2, col = rsq)) + 
+  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
+# col = res <= median(res))
+b = seq(-2, 2, by = 0.5)
+ggplot(fits, aes(x = beta1, y = beta2, col = rsq)) + 
+  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + xlim(-2,2) + ylim(-2,2)
 ```
