@@ -17,21 +17,23 @@ execute:
 
 ```{r}
 #| label: setup
-#| echo: false
+#| echo: !expr -1
 #| message: false
 #| warning: false
-knitr::opts_chunk$set(cache = TRUE, width = 80)
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE, width = 80)
 library("assertthat")
 library("dplyr")
 library("tidyr")
 library("ggplot2")
 ```
 
-# Load result from Step 1
+# Load result from `norman-perturbseq-1.qmd`
 
 ```{r}
 #| label: load
 load("norman-perturbseq-mat.RData")
+ls()
+dim(mat)
 ```
 
 # Size Factors
@@ -61,6 +63,41 @@ for(i in seq_along(sf))
 
 The `DESeq2` size factors are highly similar to the total library counts. They vary by about a factor of 10, which seems OK, except for the very last one. Let's check that it is sane.
 
+# Prepare for comparing double to single perturbations
+
+## Find our way around and arrange 
+
+```{r}
+#| label: perts
+perts = stringr::str_split_fixed(colnames(lrmat), pattern = stringr::fixed("+"), 2)
+head(perts)
+table(perts)
+```
+
+Find the double perturbations (`doubles`) and the corresponding pair of single perturbations (`single1`, `single2`). `combs` is a dataframe with indices into the columns of `nmat`
+
+```{r}
+#| label: combs
+is_ctrl1 = perts[, 1] %in% c("ctrl", "")
+is_ctrl2 = perts[, 2] %in% c("ctrl", "")
+assert_that(!any(is_ctrl1)) |> invisible()
+doubles = which(!is_ctrl2)
+combs = lapply(seq_along(doubles), function(i) {
+  s1 = which(perts[, 1] == perts[ doubles[i], 1] & is_ctrl2)
+  s2 = which(perts[, 1] == perts[ doubles[i], 2] & is_ctrl2)
+  assert_that(length(s1) == 1, length(s2) == 1)
+  tibble(double = doubles[i], single1 = s1, single2 = s2)
+}) |> bind_rows()
+combs
+combsdf = data.frame(
+  double  = colnames(dx)[combs$double], 
+  single1 = colnames(dx)[combs$single1], 
+  single2 = colnames(dx)[combs$single2]) 
+knitr::kable(combsdf) |>
+  kableExtra::kable_paper() |>
+  kableExtra::scroll_box(height = "300px")
+```
+
 ```{r}
 #| label: checkctrl
 #| fig.dim: !expr c(10, 11)
@@ -78,7 +115,7 @@ nmat[, c(sampledcolumns, last(colnames(mat)))] |>
     facet_wrap(vars(sample))
 ```
 
-# Dimension reduction
+## Dimension reduction
 
 We 
 
@@ -89,7 +126,7 @@ We
 
 ```{r}
 #| label: dimred
-#| fig.dim: !expr c(5, 2.2)
+#| fig.dim: !expr c(5, 2.9)
 ntop = 500
 snmat = nmat[order(rowMeans(nmat), decreasing = TRUE)[1:ntop], ]
 
@@ -111,7 +148,7 @@ lapply(c("PC1", "PC2"), function(i)
 )
 ```
 
-Claude summarizes the above genes like this:
+Claude summarized the above genes like this:
 
 **PC axis 1**: These genes are primarily involved in:
 
@@ -133,53 +170,26 @@ K562 is a CML cell line with the  BCR-ABL1-fusion.
 #| label: plotpca
 #| fig.dim: !expr c(24, 18)
 #| warning: false
-pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition")
-ggplot(pca2d, aes(x = PC1, y = PC2, label = condition)) + geom_point() + 
-       ggrepel::geom_label_repel() + coord_fixed()
+pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition") |> mutate(is_ctrl = is_ctrl2)
+ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + scale_colour_manual(values = c(`TRUE` = "blue3", `FALSE` = "darkorange3")) + 
+  geom_point() + ggrepel::geom_label_repel() + coord_fixed()
 pca$sdev[1:2]^2 |> signif(3)
-with(pca2d, c(var(PC1), var(PC2))) |> signif(3)
+with(pca2d, c(var(PC1), var(PC2))) |> round(3)
 ```
 
 The dimension reduced data with which we continue:
 
 ```{r}
 #| label: dx
-dx = t(pca$x[, 1:20])
-dx[1:3, 1:8] |> signif(3)
+ndim = 10
+dx = t(pca$x[, 1:ndim])
+dx[1:3, seq_len(min(c(8, ndim)))] |> signif(3)
 dim(dx)
-dx %*% t(dx) |> round(3)
+dx %*% t(dx) |> signif(3)
 ```
 
 Note the orthogonality.
 
-# Compare double to single perturbations
-
-## Find our way around and arrange 
-
-```{r}
-#| label: perts
-perts = stringr::str_split_fixed(colnames(lrmat), pattern = stringr::fixed("+"), 2)
-table(perts)
-```
-
-Find the double perturbations (`doubles`) and the corresponding pair of single perturbations (`single1`, `single2`). `combs` is a dataframe with indices into the columns of `nmat`
-
-```{r}
-#| label: combs
-doubles = which(!(perts[, 2] %in% c("ctrl", "")))
-combs = lapply(seq_along(doubles), function(i) {
-  s1 = which(perts[, 1] == perts[ doubles[i], 1] & perts[, 2] == "ctrl")
-  s2 = which(perts[, 1] == perts[ doubles[i], 2] & perts[, 2] == "ctrl")
-  assert_that(length(s1) == 1, length(s2) == 1)
-  tibble(double = doubles[i], single1 = s1, single2 = s2)
-}) |> bind_rows()
-combs
-combsdf = data.frame(
-  double  = colnames(dx)[combs$double], 
-  single1 = colnames(dx)[combs$single1], 
-  single2 = colnames(dx)[combs$single2]) 
-knitr::kable(combsdf)
-```
 
 ## Fit linear models
 
@@ -190,6 +200,7 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
     y  = dx[, combs$double[i]],
     x1 = dx[, combs$single1[i]],
     x2 = dx[, combs$single2[i]])
+  print( with(df, sum(x1*x2)) |> signif(3) )
   fit = lm(y ~ 0 + x1 + x2, data = df)
   tibble(beta1 = coef(fit)[1], beta2 = coef(fit)[2], res = mean(residuals(fit)^2), rsq = summary(fit)$r.squared)
 }) |> bind_rows() |> bind_cols(combs)
