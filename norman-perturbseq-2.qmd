@@ -200,9 +200,10 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
     y  = dx[, combs$double[i]],
     x1 = dx[, combs$single1[i]],
     x2 = dx[, combs$single2[i]])
-  print( with(df, sum(x1*x2)) |> signif(3) )
+  ## angle between x1 and x2
+  df |> with(180/pi*acos(sum(x1*x2)/sqrt(sum(x1*x1)*sum(x2*x2)))) |> signif(3) |>  print() 
   fit = lm(y ~ 0 + x1 + x2, data = df)
-  tibble(beta1 = coef(fit)[1], beta2 = coef(fit)[2], res = mean(residuals(fit)^2), rsq = summary(fit)$r.squared)
+  tibble(beta1 = coef(fit)["x1"], beta2 = coef(fit)["x2"], res = mean(residuals(fit)^2), rsq = summary(fit)$r.squared)
 }) |> bind_rows() |> bind_cols(combs)
 ```
 ```{r}
