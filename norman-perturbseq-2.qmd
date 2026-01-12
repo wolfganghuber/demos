@@ -131,8 +131,7 @@ We
 - perform PCA (without scaling)
 
 ```{r}
-#| label: dimred
-#| fig.dim: !expr c(5, 2.9)
+#| label: dimred1
 ntop = 500
 snmat = nmat[order(rowMeans(nmat), decreasing = TRUE)[1:ntop], ]
 
@@ -146,7 +145,10 @@ if (FALSE) {
 }
 
 lrmat = log2(snmat[, seq_len(ncol(snmat)-1)]) - log2(snmat[, ncol(snmat)])  # as established above, the last column is the control 
-
+```
+```{r}
+#| label: dimred2
+#| fig.dim: !expr c(5, 2.6)
 pca = prcomp(t(lrmat), center = TRUE, scale. = FALSE)
 plot(pca)
 lapply(c("PC1", "PC2"), function(i)
@@ -172,6 +174,8 @@ Overall: basic cellular metabolism, protein production, and stress responses.
 
 K562 is a CML cell line with the  BCR-ABL1-fusion.
 
+## Overall PCA plot
+
 ```{r}
 #| label: plotpca-all
 #| fig.dim: !expr c(24, 18)
@@ -182,28 +186,38 @@ ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) +
   geom_point() + ggrepel::geom_label_repel() + coord_fixed()
 ```
 
+## The same PCA plot as before, but faceted by `group`
+
+`group` comprises a double perturbation and the two respective single perturbations.
+We need to do some data wrangling to add the `group` variable, and to add enough copies of the single perturbation rows in the `pca2d` dataframe so that the faceting with `facet_wrap` works.
+
 ```{r}
 #| label: plotpca-faceted
-#| fig.dim: !expr c(12, 45)
+#| fig.dim: !expr c(12, 36)
 #| warning: false
-pca2d = mutate(pca2d, group = factor(NA_character_, levels = combsdf$double))
+pca2d = mutate(pca2d, 
+  group = factor(NA_character_, levels = combsdf$double)
+)
 for (i in seq_len(nrow(combsdf))) {
   pca2d$group[pca2d$condition == combsdf$double[i] ] = combsdf$double[i]
-  s1 = which( pca2d$condition == combsdf$single1[i])[1]
+  s1 = which( pca2d$condition == combsdf$single1[i])[1]      # find relevant existing row
   s2 = which( pca2d$condition == combsdf$single2[i])[1]
   if (is.na(pca2d$group[s1])) 
-    pca2d$group[s1] = combsdf$double[i]
+    pca2d$group[s1] = combsdf$double[i]                                        # use existing row and set `group`
   else
-    pca2d = bind_rows(pca2d, mutate(pca2d[s1, ], group = combsdf$double[i]))
+    pca2d = bind_rows(pca2d, mutate(pca2d[s1, ], group = combsdf$double[i]))   # duplicate row
   if (is.na(pca2d$group[s2])) 
-    pca2d$group[s2] = combsdf$double[i]
+    pca2d$group[s2] = combsdf$double[i]                                        # use existing row
   else
-    pca2d = bind_rows(pca2d, mutate(pca2d[s2, ], group = combsdf$double[i]))
+    pca2d = bind_rows(pca2d, mutate(pca2d[s2, ], group = combsdf$double[i]))   # duplicate row
 }
 ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + 
   scale_colour_manual(values = RColorBrewer::brewer.pal(3, "Set1")[1:2] |> setNames(c("FALSE", "TRUE"))) + 
-  geom_point() + coord_fixed() + geom_abline(h=0) + geom_abline(v=0) +
-  facet_wrap(vars(group), ncol = 6)
+  geom_point() + coord_fixed() + 
+  geom_hline(yintercept = 0, col = "#808080", linewidth = 0.5) + 
+  geom_vline(xintercept = 0, col = "#808080", linewidth = 0.5)  +
+  facet_wrap(vars(group), ncol = 6) + theme(legend.position = "none")
+filter(pca2d, is.na(group))
 ```
 
 ```{r}
