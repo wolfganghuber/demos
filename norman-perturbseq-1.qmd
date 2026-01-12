@@ -73,7 +73,19 @@ files = c("GSM4367979_exp1-5.matrix.mtx.gz", "GSM4367984_exp6.matrix.mtx.gz", "G
 
 # Pseudobulk
 
-Split by condition.
+`lane` and `gemgroup` are the same. The `lane` variable seems to be **not** confounded with `condition`:
+
+```{r}
+#| label: checks
+with(ad$obs, table(lane, gemgroup))
+tab_cond_lane = with(ad$obs, table(condition, lane))
+knitr::kable(tab_cond_lane) |>
+  kableExtra::kable_paper() |>
+  kableExtra::scroll_box(height = "300px")
+```
+
+
+## Split by condition.
 
 First, we see that among the three variables 
 `condition`, `cell_type_condition` and `condition_name` in `ad$obs` there is no relevant difference.
