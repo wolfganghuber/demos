@@ -69,7 +69,7 @@ The `DESeq2` size factors are highly similar to the total library counts. They v
 
 ```{r}
 #| label: perts
-perts = stringr::str_split_fixed(colnames(lrmat), pattern = stringr::fixed("+"), 2)
+perts = stringr::str_split_fixed(colnames(nmat), pattern = stringr::fixed("+"), 2)
 head(perts)
 table(perts)
 ```
@@ -80,7 +80,7 @@ Find the double perturbations (`doubles`) and the corresponding pair of single p
 #| label: combs
 is_ctrl1 = perts[, 1] %in% c("ctrl", "")
 is_ctrl2 = perts[, 2] %in% c("ctrl", "")
-assert_that(!any(is_ctrl1)) |> invisible()
+assert_that(!any(is_ctrl1[-length(is_ctrl1)])) |> invisible()
 doubles = which(!is_ctrl2)
 combs = lapply(seq_along(doubles), function(i) {
   s1 = which(perts[, 1] == perts[ doubles[i], 1] & is_ctrl2)
@@ -90,9 +90,10 @@ combs = lapply(seq_along(doubles), function(i) {
 }) |> bind_rows()
 combs
 combsdf = data.frame(
-  double  = colnames(dx)[combs$double], 
-  single1 = colnames(dx)[combs$single1], 
-  single2 = colnames(dx)[combs$single2]) 
+  double  = colnames(nmat)[combs$double], 
+  single1 = colnames(nmat)[combs$single1], 
+  single2 = colnames(nmat)[combs$single2]
+) 
 knitr::kable(combsdf) |>
   kableExtra::kable_paper() |>
   kableExtra::scroll_box(height = "300px")
@@ -170,8 +171,9 @@ K562 is a CML cell line with the  BCR-ABL1-fusion.
 #| label: plotpca
 #| fig.dim: !expr c(24, 18)
 #| warning: false
-pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition") |> mutate(is_ctrl = is_ctrl2)
-ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + scale_colour_manual(values = c(`TRUE` = "blue3", `FALSE` = "darkorange3")) + 
+pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition") |> mutate(is_ctrl = is_ctrl2[-length(is_ctrl2)])
+ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + 
+  scale_colour_manual(values = c(`TRUE` = "blue3", `FALSE` = "darkorange3")) + 
   geom_point() + ggrepel::geom_label_repel() + coord_fixed()
 pca$sdev[1:2]^2 |> signif(3)
 with(pca2d, c(var(PC1), var(PC2))) |> round(3)
