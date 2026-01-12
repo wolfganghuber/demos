@@ -9,6 +9,8 @@ format:
     page-layout: full
     css: wh.css
     toc: true
+    lightbox: true
+    theme: spacelab
 execute:
   fig-align: center
 ---
@@ -20,7 +22,7 @@ execute:
 #| echo: !expr -1
 #| message: false
 #| warning: false
-knitr::opts_chunk$set(cache = TRUE, autodep = TRUE, width = 80)
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE, width = 120)
 library("assertthat")
 library("dplyr")
 library("tidyr")
@@ -61,7 +63,24 @@ for(i in seq_along(sf))
   nmat[,i] = nmat[,i] / sf[i]
 ```
 
-The `DESeq2` size factors are highly similar to the total library counts. They vary by about a factor of 10, which seems OK, except for the very last one. Let's check that it is sane.
+The `DESeq2` size factors are highly similar to the total library counts. They vary by about a factor of 10, which seems OK, except for the very last one, which is the unperturbed control. Let's check that it is sane. We do a scatterplot of it versus 25 randomly sampled perturbations (single or double).
+
+```{r}
+#| label: checkctrl
+#| fig.dim: !expr c(10, 11)
+sampledcolumns = sample(colnames(nmat)[-ncol(nmat)], 25)
+nmat[, c(sampledcolumns, last(colnames(nmat)))] |>
+  as_tibble() |>
+  mutate(row_id = seq_len(nrow(nmat))) |>
+  pivot_longer(cols = all_of(sampledcolumns), 
+               names_to = "sample", 
+               values_to = "value") |>
+  ggplot(aes(x = asinh(ctrl), y = asinh(value))) + 
+    geom_point(size = 0.1) + 
+    geom_abline(slope = 1, col = "red") +
+    coord_fixed() +
+    facet_wrap(vars(sample), ncol = 5)
+```
 
 # Prepare for comparing double to single perturbations
 
@@ -80,7 +99,10 @@ Find the double perturbations (`doubles`) and the corresponding pair of single p
 #| label: combs
 is_ctrl1 = perts[, 1] %in% c("ctrl", "")
 is_ctrl2 = perts[, 2] %in% c("ctrl", "")
-assert_that(!any(is_ctrl1[-length(is_ctrl1)])) |> invisible()
+assert_that(
+  last(is_ctrl1) && last(is_ctrl2),  # last sample is non-perturbed control
+  !any(is_ctrl1[-length(is_ctrl1)])  # all except for the very last sample should not have 'ctrl' in column 1
+) |> invisible() 
 doubles = which(!is_ctrl2)
 combs = lapply(seq_along(doubles), function(i) {
   s1 = which(perts[, 1] == perts[ doubles[i], 1] & is_ctrl2)
@@ -97,23 +119,6 @@ combsdf = data.frame(
 knitr::kable(combsdf) |>
   kableExtra::kable_paper() |>
   kableExtra::scroll_box(height = "300px")
-```
-
-```{r}
-#| label: checkctrl
-#| fig.dim: !expr c(10, 11)
-sampledcolumns = sample(colnames(mat)[-ncol(mat)], 25)
-nmat[, c(sampledcolumns, last(colnames(mat)))] |>
-  as_tibble() |>
-  mutate(row_id = seq_len(nrow(mat))) |>
-  pivot_longer(cols = all_of(sampledcolumns), 
-               names_to = "sample", 
-               values_to = "value") |>
-  ggplot(aes(x = asinh(ctrl), y = asinh(value))) + 
-    geom_point(size = 0.1) + 
-    geom_abline(slope = 1, col = "red") +
-    coord_fixed() +
-    facet_wrap(vars(sample))
 ```
 
 ## Dimension reduction
@@ -140,7 +145,7 @@ if (FALSE) {
   rownames(snmat)
 }
 
-lrmat = log2(snmat[, colnames(snmat) != "ctrl"]) - log2(snmat[, "ctrl"])
+lrmat = log2(snmat[, seq_len(ncol(snmat)-1)]) - log2(snmat[, ncol(snmat)])  # as established above, the last column is the control 
 
 pca = prcomp(t(lrmat), center = TRUE, scale. = FALSE)
 plot(pca)
@@ -173,21 +178,21 @@ K562 is a CML cell line with the  BCR-ABL1-fusion.
 #| warning: false
 pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition") |> mutate(is_ctrl = is_ctrl2[-length(is_ctrl2)])
 ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + 
-  scale_colour_manual(values = c(`TRUE` = "blue3", `FALSE` = "darkorange3")) + 
+  scale_colour_manual(values = RColorBrewer::brewer.pal(2, "Set1") |> setNames(c("TRUE", "FALSE"))) + 
   geom_point() + ggrepel::geom_label_repel() + coord_fixed()
 pca$sdev[1:2]^2 |> signif(3)
-with(pca2d, c(var(PC1), var(PC2))) |> round(3)
+with(pca2d, c(var(PC1), var(PC2))) |> signif(3)
 ```
 
 The dimension reduced data with which we continue:
 
 ```{r}
 #| label: dx
-ndim = 10
+ndim = 12
 dx = t(pca$x[, 1:ndim])
-dx[1:3, seq_len(min(c(8, ndim)))] |> signif(3)
+dx[seq_len(min(c(3, ndim))), 1:7] |> round(3)
 dim(dx)
-dx %*% t(dx) |> signif(3)
+dx %*% t(dx) |> round(3)
 ```
 
 Note the orthogonality.
@@ -202,10 +207,14 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
     y  = dx[, combs$double[i]],
     x1 = dx[, combs$single1[i]],
     x2 = dx[, combs$single2[i]])
-  ## angle between x1 and x2
-  df |> with(180/pi*acos(sum(x1*x2)/sqrt(sum(x1*x1)*sum(x2*x2)))) |> signif(3) |>  print() 
   fit = lm(y ~ 0 + x1 + x2, data = df)
-  tibble(beta1 = coef(fit)["x1"], beta2 = coef(fit)["x2"], res = mean(residuals(fit)^2), rsq = summary(fit)$r.squared)
+  tibble(
+    x1 = coef(fit)["x1"], 
+    x2 = coef(fit)["x2"], 
+    res = mean(residuals(fit)^2), 
+    rsq = summary(fit)$r.squared,
+    angle = with(df, 180/pi * acos( sum(x1*x2) / sqrt(sum(x1*x1)*sum(x2*x2)) )),
+  )
 }) |> bind_rows() |> bind_cols(combs)
 ```
 ```{r}
@@ -213,12 +222,15 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
 #| fig.dim: !expr c(5, 3)
 #| out.width: "100%"
 #| eval: true
-r = range(with(fits, c(beta1, beta2)))
+r = range(fits$x1, fits$x2)
 b = floor(r[1]):ceiling(r[2])
-ggplot(fits, aes(x = beta1, y = beta2, col = rsq)) + 
-  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + scale_x_continuous(breaks = b) + scale_y_continuous(breaks = b)
-# col = res <= median(res))
-b = seq(-2, 2, by = 0.5)
-ggplot(fits, aes(x = beta1, y = beta2, col = rsq)) + 
-  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + xlim(-2,2) + ylim(-2,2)
+ggplot(fits, aes(x = x1, y = x2, colour = rsq)) + 
+  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + 
+  scale_x_continuous(breaks = b) + 
+  scale_y_continuous(breaks = b) + 
+  scale_colour_continuous(name = expression(R^2))
+ggplot(fits, aes(x = x1, y = x2, colour = rsq)) + 
+  geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + 
+  xlim(-2,2) + ylim(-2,2) +
+  scale_colour_continuous(name = expression(R^2)) 
 ```
