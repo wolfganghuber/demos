@@ -173,26 +173,58 @@ Overall: basic cellular metabolism, protein production, and stress responses.
 K562 is a CML cell line with the  BCR-ABL1-fusion.
 
 ```{r}
-#| label: plotpca
+#| label: plotpca-all
 #| fig.dim: !expr c(24, 18)
 #| warning: false
 pca2d = as_tibble(pca$x[, c("PC1", "PC2")], rownames = "condition") |> mutate(is_ctrl = is_ctrl2[-length(is_ctrl2)])
 ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + 
-  scale_colour_manual(values = RColorBrewer::brewer.pal(2, "Set1") |> setNames(c("TRUE", "FALSE"))) + 
+  scale_colour_manual(values = RColorBrewer::brewer.pal(3, "Set1")[1:2] |> setNames(c("FALSE", "TRUE"))) + 
   geom_point() + ggrepel::geom_label_repel() + coord_fixed()
+```
+
+```{r}
+#| label: plotpca-faceted
+#| fig.dim: !expr c(12, 45)
+#| warning: false
+pca2d = mutate(pca2d, group = factor(NA_character_, levels = combsdf$double))
+for (i in seq_len(nrow(combsdf))) {
+  pca2d$group[pca2d$condition == combsdf$double[i] ] = combsdf$double[i]
+  s1 = which( pca2d$condition == combsdf$single1[i])[1]
+  s2 = which( pca2d$condition == combsdf$single2[i])[1]
+  if (is.na(pca2d$group[s1])) 
+    pca2d$group[s1] = combsdf$double[i]
+  else
+    pca2d = bind_rows(pca2d, mutate(pca2d[s1, ], group = combsdf$double[i]))
+  if (is.na(pca2d$group[s2])) 
+    pca2d$group[s2] = combsdf$double[i]
+  else
+    pca2d = bind_rows(pca2d, mutate(pca2d[s2, ], group = combsdf$double[i]))
+}
+ggplot(pca2d, aes(x = PC1, y = PC2, label = condition, col = is_ctrl)) + 
+  scale_colour_manual(values = RColorBrewer::brewer.pal(3, "Set1")[1:2] |> setNames(c("FALSE", "TRUE"))) + 
+  geom_point() + coord_fixed() + geom_abline(h=0) + geom_abline(v=0) +
+  facet_wrap(vars(group), ncol = 6)
+```
+
+```{r}
+#| label: sdevs
 pca$sdev[1:2]^2 |> signif(3)
 with(pca2d, c(var(PC1), var(PC2))) |> signif(3)
 ```
+
+
+
+
 
 The dimension reduced data with which we continue:
 
 ```{r}
 #| label: dx
-ndim = 12
+ndim = 120
 dx = t(pca$x[, 1:ndim])
 dx[seq_len(min(c(3, ndim))), 1:7] |> round(3)
 dim(dx)
-dx %*% t(dx) |> round(3)
+dx %*% t(dx) |> round(3) |> (\(x) x[seq_len(min(4, ndim)), seq_len(min(4, ndim))])()
 ```
 
 Note the orthogonality.
