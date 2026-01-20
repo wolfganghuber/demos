@@ -255,8 +255,10 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
     x2 = dx[, combs$single2[i]])
   fit = lm(y ~ 0 + x1 + x2, data = df)
   tibble(
-    x1 = coef(fit)["x1"], 
-    x2 = coef(fit)["x2"], 
+    condition = colnames(dx)[combs$double[i]],
+    beta1 = coef(fit)["x1"], 
+    beta2 = coef(fit)["x2"], 
+    data = list(df),
     res = mean(residuals(fit)^2), 
     rsq = summary(fit)$r.squared,
     angle = with(df, 180/pi * acos( sum(x1*x2) / sqrt(sum(x1*x1)*sum(x2*x2)) )),
@@ -268,15 +270,27 @@ fits = lapply(seq_len(nrow(combs)), function(i) {
 #| fig.dim: !expr c(5, 3)
 #| out.width: "100%"
 #| eval: true
-r = range(fits$x1, fits$x2)
+r = range(fits$beta1, fits$beta2)
 b = floor(r[1]):ceiling(r[2])
-ggplot(fits, aes(x = x1, y = x2, colour = rsq)) + 
+ggplot(fits, aes(x = beta1, y = beta2, colour = rsq)) + 
   geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + 
   scale_x_continuous(breaks = b) + 
   scale_y_continuous(breaks = b) + 
   scale_colour_continuous(name = expression(R^2))
-ggplot(fits, aes(x = x1, y = x2, colour = rsq)) + 
+ggplot(fits, aes(x = beta1, y = beta2, colour = rsq)) + 
   geom_abline(slope = -1, intercept = 1) + geom_point() + coord_fixed() + 
   xlim(-2,2) + ylim(-2,2) +
   scale_colour_continuous(name = expression(R^2)) 
+```
+```{r}
+#| label: plotpca-faceted2
+#| fig.dim: !expr c(12, 36)
+#| warning: true
+pca4facets = lapply(seq_len(nrow(fits)), function(i)
+  t(fits$data[[i]][1:2, ]) |> 
+    `colnames<-`(c("pca1", "pca2")) |> 
+    as_tibble(rownames = "perturbation") |>
+    mutate(condition = fits$condition[i])
+) |> bind_rows() 
+  
 ```
