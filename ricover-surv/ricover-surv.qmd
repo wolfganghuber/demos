@@ -1,0 +1,131 @@
+---
+title: RICOVER survival data
+author: "Wolfgang Huber"
+date: "2026-02-09"
+format:
+  html:
+    embed-resources: false
+    page-layout: full
+    css: "wh.css"
+    toc: true
+    lightbox: true
+    theme: spacelab
+execute:
+  fig-align: center
+---
+
+# Setup
+
+```{r}
+#| label: setup
+#| echo: !expr -1
+#| message: false
+#| warning: false
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE, width = 120)
+library("assertthat")
+library("survival")
+library("ggplot2")
+library("GGally")
+```
+
+# The data
+
+::: {style="border-left: 3px solid #ccc; padding-left: 1em; margin-left: 0; color: #666;"}
+From: "Erin Chung" <erin.chung@embl.de>\
+Subject: RICOVER survival data\
+Date: 5. February 2026 at 15:23:23 CET\
+To: "Wolfgang Huber" <wolfgang.huber@embl.org>\
+Cc: "Christina.Schniederjohann@med.uni-duesseldorf.de" <Christina.Schniederjohann@med.uni-duesseldorf.de>\
+
+Dear Wolfgang, 
+
+Attached is the survival data frame (time=‘PFS’, event=‘PFS_stat') with interaction scores and cell-type frequencies, in case you are still interested to have a look. We appreciate any suggestions.
+
+Best,
+Erin
+:::
+
+
+Link to the file: [survival_spatial_compositional.csv](survival_spatial_compositional.csv)
+
+```{r}
+#| label: read
+#| message: false
+x = readr::read_csv("survival_spatial_compositional.csv")
+colnames(x)[1] = "ID"
+```
+Click 'details' to see column names of `x`.
+
+<details>
+```{r}
+#| label: colnames
+#| output: asis
+colnames(x)
+```
+</details>
+
+# Check the data
+
+```{r}
+#| label: check1
+miss = vapply(c("PFS", "PFS_STAT", "T_exh", "B_prol", "B_prol ↔ T_exh"), \(i) sum(is.na(x[[i]])), integer(1))
+miss
+```
+```{r}
+#| label: check2
+#| echo: false
+#| results: hide
+assert_that(all(miss==c(0,0,0,0,16)))
+```
+Why are 16 instances of `B_prol ↔ T_exh` missing?
+
+
+```{r}
+#| label: check3
+#| layout-ncol: 1
+#| fig.dim: !expr c(6, 6)
+#| message: false
+#| warning: false
+ggpairs(select(x, T_exh, B_prol,`B_prol ↔ T_exh`), 
+        diag = list(continuous = wrap("barDiag", bins = 30)))
+```
+
+
+# Cox regression
+
+## Original scale
+
+```{r}
+#| label: coxregorig
+fit = coxph(Surv(time = PFS, event = PFS_STAT) ~ T_exh + B_prol + `B_prol ↔ T_exh`, data = x)
+summary(fit)
+```
+
+## asinh (like logarithm) scale
+
+To see whether reducing the outliers helps. It does not seem to.
+
+```{r}
+#| label: coxregasinh
+fit = coxph(Surv(time = PFS, event = PFS_STAT) ~ asinh(T_exh) + asinh(B_prol) + asinh(`B_prol ↔ T_exh`), data = x)
+summary(fit)
+```
+
+## truncate negative values of `B_prol ↔ T_exh`
+
+To see whether that helps. It does not seem to.
+
+```{r}
+#| label: coxregtrunc
+trunc = function(x) ifelse(x > 0, x, 0)
+fit = coxph(Surv(time = PFS, event = PFS_STAT) ~ T_exh + B_prol + trunc(`B_prol ↔ T_exh`), data = x)
+summary(fit)
+```
+# Session Info
+
+```{r}
+#| label: sessionInfo
+sessionInfo()
+```
+
+
