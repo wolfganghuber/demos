@@ -1,0 +1,288 @@
+---
+title: "Sunrise vs Sunset Times over the Year"
+format: html
+engine: knitr
+filters:
+  - webr
+webr:
+  packages:
+    - suncalc
+    - ggplot2
+    - dplyr
+---
+
+For every day of the chosen year this page computes the sunrise and sunset
+times at a given location with the R package
+[suncalc](https://cran.r-project.org/package=suncalc) and plots each day as a
+point (*x* = sunrise hour, *y* = sunset hour). The red points mark the day with
+the earliest sunset and the day with the latest sunrise. All computation
+happens locally in your browser: R itself runs as
+[WebAssembly](https://docs.r-wasm.org/), loaded by the
+[quarto-webr](https://github.com/coatless/quarto-webr) extension.
+
+Enter a location and a year, then press **Plot**.
+
+```{webr-r}
+#| context: setup
+#| message: false
+```
+
+```{=html}
+<div class="ss-card">
+<div class="ss-controls">
+<label>Latitude
+<input id="ss-lat" type="number" step="any" min="-90" max="90" value="49.38">
+</label>
+<label>Longitude
+<input id="ss-lon" type="number" step="any" min="-180" max="180" value="8.71">
+</label>
+<label>Year
+<input id="ss-year" type="number" step="1" min="1" max="9999" value="2025">
+</label>
+<label>Timezone
+<input id="ss-tz" type="text" list="ss-tzlist" value="Europe/Berlin" spellcheck="false">
+<datalist id="ss-tzlist">
+<option value="UTC"></option>
+<option value="Europe/Berlin"></option>
+<option value="Europe/London"></option>
+<option value="America/New_York"></option>
+<option value="America/Los_Angeles"></option>
+<option value="Asia/Tokyo"></option>
+<option value="Australia/Sydney"></option>
+</datalist>
+</label>
+<button id="ss-go" disabled>Loading R…</button>
+</div>
+<p class="ss-hint">
+First use downloads the R WebAssembly runtime and the R packages
+(suncalc, ggplot2, dplyr) — this can take a minute. An internet
+connection is required.
+</p>
+</div>
+```
+
+<div class="ss-card">
+<pre id="ss-log" role="log" aria-live="polite"></pre>
+</div>
+
+<div id="ss-plot"></div>
+
+<details>
+<summary>Show the R code that is evaluated</summary>
+<pre id="ss-rcode">(waiting to run…)</pre>
+</details>
+
+Ported from `sunrise+set.R` with the
+[quarto-webr](https://github.com/coatless/quarto-webr) extension (bundled in
+`_extensions/webr/`), which runs [webR](https://docs.r-wasm.org/) — R compiled
+to WebAssembly — locally in your web browser. R packages are downloaded on
+each page load from [repo.r-wasm.org](https://repo.r-wasm.org/).
+
+<style type="text/css">
+  .ss-card {
+    background: #fff; border: 1px solid #ddd; border-radius: 10px;
+    padding: 1rem 1.25rem; margin: 1.25rem 0;
+  }
+  .ss-controls { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: flex-end; }
+  .ss-controls label {
+    display: flex; flex-direction: column; gap: .25rem;
+    font-size: .85rem; color: #666; margin-bottom: 0;
+  }
+  .ss-controls input {
+    font-size: 1rem; padding: .35rem .5rem; width: 9ch;
+    border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #1a1a1a;
+  }
+  .ss-controls input#ss-tz { width: 16ch; }
+  .ss-controls button {
+    font-size: 1rem; padding: .45rem 1.4rem; border: none; border-radius: 6px;
+    background: #2563eb; color: #fff; cursor: pointer;
+  }
+  .ss-controls button:disabled { background: #9db4e8; cursor: wait; }
+  .ss-hint { font-size: .8rem; color: #666; margin: .5rem 0 0; }
+  #ss-log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .78rem; line-height: 1.45;
+    max-height: 9em; overflow-y: auto; white-space: pre-wrap; margin: 0;
+  }
+  #ss-log .err  { color: #b91c1c; }
+  #ss-log .warn { color: #92400e; }
+  #ss-log .note { color: #666; }
+  #ss-plot { text-align: center; min-height: 2rem; }
+  #ss-plot canvas {
+    max-width: 100%; height: auto;
+    border: 1px solid #ddd; border-radius: 6px; background: #fff;
+  }
+  details pre { font-size: .75rem; line-height: 1.4; overflow-x: auto; }
+</style>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const logEl = $("ss-log"), plotEl = $("ss-plot"), btn = $("ss-go");
+
+// Size of the R graphics device, in points (1/72 inch). 720pt is like
+// `fig-width: 10` in Quarto. webR captures the plot as a 2x bitmap and it
+// is displayed at 1x (PLOT_PTS css pixels), so it stays crisp on hi-DPI
+// screens. Make this number bigger or smaller to resize the plot.
+const PLOT_PTS = 720;
+
+// Default the year input to the current year
+$("ss-year").value = new Date().getFullYear();
+
+function logLine(text, cls = "") {
+  const span = document.createElement("span");
+  span.textContent = text + "\n";
+  if (cls) span.className = cls;
+  logEl.appendChild(span);
+  while (logEl.childNodes.length > 500) logEl.removeChild(logEl.firstChild);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Run R code with warnings/messages re-routed to stderr and errors
+// re-thrown (so that they surface as JavaScript exceptions)
+function withLogging(body) {
+  return `tryCatch(
+  withCallingHandlers({
+${body}
+  },
+    warning = function(w) { cat("Warning: ", conditionMessage(w), "\\n", sep = "", file = stderr()); invokeRestart("muffleWarning") },
+    message  = function(m) { cat("Note: ",    conditionMessage(m), "\\n", sep = "", file = stderr()); invokeRestart("muffleMessage") }
+  ),
+  error = function(e) stop(conditionMessage(e), call. = FALSE)
+)`;
+}
+
+const plotBody = (lat, lon, year, tz) => `
+lat  = ${lat}
+lon  = ${lon}
+year = ${year}
+tz   = "${tz}"
+
+suppressPackageStartupMessages({
+  library("suncalc")
+  library("ggplot2")
+  library("dplyr")
+})
+  
+# Dates for the chosen year
+dates = seq(as.Date(sprintf("%04d-01-01", year)), as.Date(sprintf("%04d-12-31", year)), by = "day")
+
+# Sunrise and sunset times
+suntimes = suncalc::getSunlightTimes(date = dates, lat = lat, lon = lon, tz = tz)
+
+# Extract hour of day as decimal (e.g., 6.5 = 6:30 AM)
+hour = function(x) as.numeric(format(x, "%H")) + as.numeric(format(x, "%M")) / 60 + as.numeric(format(x, "%S")) / 3600
+
+suntimes = dplyr::mutate(suntimes,
+  sunriseHour = hour(sunrise),
+  sunsetHour  = hour(sunset))
+
+LatestNight   = dplyr::slice_max(suntimes, sunsetHour)[1,]
+EarliestDay   = dplyr::slice_min(suntimes, sunriseHour)[1,]
+EarliestNight = dplyr::slice_min(suntimes, sunsetHour)[1,]
+LatestDay     = dplyr::slice_max(suntimes, sunriseHour)[1,]
+
+p = ggplot(suntimes, aes(x = sunriseHour, y = sunsetHour, label = format(date))) +
+  geom_point(col = "#b0b0b0") +
+  geom_path(col = "lightblue") +
+  geom_point(data = LatestDay,     col = "red") +
+  geom_point(data = EarliestNight, col = "red") +
+  geom_point(data = EarliestDay,   col = "red") +
+  geom_text(data =  LatestDay,     hjust = "middle", vjust = "top") +
+  geom_text(data =  EarliestNight, vjust = "top") +
+  geom_text(data =  EarliestDay,   hjust = "middle", vjust = "top") +
+  xlab("Sunrise (hour)") + ylab("Sunset (hour)") +
+  ggtitle(sprintf("Sunrise vs Sunset Times (%.2f, %.2f), %d", lat, lon, year))
+
+if (LatestNight$date != EarliestDay$date) {
+  p = p +
+    geom_point(data = LatestNight, col = "red") +
+    geom_text(data =  LatestNight, hjust = "left", vjust = "bottom")
+}
+
+print(p)`;
+
+function showCapturedOutput(output) {
+  for (const o of output) {
+    if (typeof o.data === "string") {
+      const cls = o.data.startsWith("Warning") ? "warn" : o.data.startsWith("Note") ? "note" : "";
+      logLine(o.data, cls);
+    } else {
+      logLine(`[${o.type}]`);
+    }
+  }
+}
+
+function showImages(images) {
+  plotEl.replaceChildren();
+  for (const img of images) {
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    c.style.width = PLOT_PTS + "px";
+    c.getContext("2d").drawImage(img, 0, 0);
+    plotEl.appendChild(c);
+  }
+}
+
+let shelter;
+window.__runs = 0; // small counter used by automated tests
+
+function setBusy(busy, label) {
+  btn.disabled = busy;
+  if (label) btn.textContent = label;
+}
+
+async function runPlot() {
+  const lat = Number($("ss-lat").value);
+  const lon = Number($("ss-lon").value);
+  const year = Number($("ss-year").value);
+  const tz = $("ss-tz").value.replace(/[^A-Za-z0-9_+/-]/g, "");
+
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90)  return logLine("ERROR: latitude must be between -90 and 90", "err");
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return logLine("ERROR: longitude must be between -180 and 180", "err");
+  if (!Number.isInteger(year) || year < 1 || year > 9999) return logLine("ERROR: year must be an integer between 1 and 9999", "err");
+  if (!tz) return logLine("ERROR: please provide a timezone (e.g., UTC)", "err");
+
+  const code = withLogging(plotBody(lat, lon, year, tz));
+  $("ss-rcode").textContent = code;
+
+  window.__runs++;
+  logLine(`— Plotting for lat = ${lat}, lon = ${lon}, year = ${year}, tz = ${tz}`);
+  setBusy(true, "Plotting…");
+  try {
+    const cap = await shelter.captureR(code, {
+      captureGraphics: { width: PLOT_PTS, height: PLOT_PTS, bg: "white", pointsize: 12, capture: true }
+    });
+    showCapturedOutput(cap.output);
+    if (cap.images.length === 0) {
+      logLine("ERROR: no plot was produced (see messages above)", "err");
+    } else {
+      showImages(cap.images);
+    }
+  } catch (err) {
+    logLine("ERROR: " + (err?.message ?? String(err)), "err");
+  } finally {
+    await shelter.purge();
+    setBusy(false, "Plot");
+  }
+}
+
+(async () => {
+  logLine("Loading the R WebAssembly runtime and packages (suncalc, ggplot2, dplyr)…");
+  try {
+    if (typeof globalThis.qwebrInstance === "undefined") {
+      throw new Error("the quarto-webr extension did not initialize — is the `webr` filter enabled and the `_extensions/webr/` directory present?");
+    }
+    await globalThis.qwebrInstance; // webR is booted, packages installed and loaded
+    shelter = globalThis.mainWebRCodeShelter;
+  } catch (err) {
+    logLine("ERROR: could not start webR — check your internet connection. " + (err?.message ?? String(err)), "err");
+    return;
+  }
+  logLine("R " + await globalThis.mainWebR.evalRString("paste0(R.version$major, '.', R.version$minor)") + " is running in your browser.");
+  setBusy(false, "Plot");
+  btn.addEventListener("click", runPlot);
+  logLine("Ready.");
+  await runPlot(); // draw the default plot right away
+})();
+</script>
