@@ -9,6 +9,7 @@ webr:
     - suncalc
     - ggplot2
     - dplyr
+    - svglite
 ---
 
 For every day of the chosen year this page computes the sunrise and sunset
@@ -20,7 +21,8 @@ happens locally in your browser: R itself runs as
 [WebAssembly](https://docs.r-wasm.org/), loaded by the
 [quarto-webr](https://github.com/coatless/quarto-webr) extension.
 
-Enter a location and a year, then press **Plot**.
+Enter a location and a year, then press **Plot**. Hover the mouse over a
+point to see that day's date.
 
 ```{webr-r}
 #| context: setup
@@ -55,7 +57,7 @@ Enter a location and a year, then press **Plot**.
 </div>
 <p class="ss-hint">
 First use downloads the R WebAssembly runtime and the R packages
-(suncalc, ggplot2, dplyr) — this can take a minute. An internet
+(suncalc, ggplot2, dplyr, svglite) — this can take a minute. An internet
 connection is required.
 </p>
 </div>
@@ -108,9 +110,18 @@ each page load from [repo.r-wasm.org](https://repo.r-wasm.org/).
   #ss-log .warn { color: #92400e; }
   #ss-log .note { color: #666; }
   #ss-plot { text-align: center; min-height: 2rem; }
-  #ss-plot canvas {
+  #ss-plot svg {
     max-width: 100%; height: auto;
     border: 1px solid #ddd; border-radius: 6px; background: #fff;
+    cursor: crosshair;
+  }
+  #ss-tip {
+    position: fixed; z-index: 1000; pointer-events: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .8rem; padding: .15rem .4rem; white-space: nowrap;
+    background: #1a1a1a; color: #fff; border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+    transform: translate(-50%, -170%);
   }
   details pre { font-size: .75rem; line-height: 1.4; overflow-x: auto; }
 </style>
@@ -119,10 +130,10 @@ each page load from [repo.r-wasm.org](https://repo.r-wasm.org/).
 const $ = (id) => document.getElementById(id);
 const logEl = $("ss-log"), plotEl = $("ss-plot"), btn = $("ss-go");
 
-// Size of the R graphics device, in points (1/72 inch). 720pt is like
-// `fig-width: 10` in Quarto. webR captures the plot as a 2x bitmap and it
-// is displayed at 1x (PLOT_PTS css pixels), so it stays crisp on hi-DPI
-// screens. Make this number bigger or smaller to resize the plot.
+// Size of the plot, in points (1/72 inch). 720pt is like `fig-width: 10`
+// in Quarto. The plot is rendered as SVG and displayed at 1 viewBox unit
+// = 1 css pixel, so it stays crisp at any zoom level. Make this number
+// bigger or smaller to resize the plot.
 const PLOT_PTS = 720;
 
 // Default the year input to the current year
@@ -200,12 +211,38 @@ p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
   xlab("Sunrise (hour)") + 
   ylab("Sunset (hour)") +
   ggtitle(sprintf("Sunrise vs sunset times at (%.2f, %.2f) in %d", lat, lon, year)) +
+  theme_gray(base_size = 18, base_family = "Helvetica Neue") +
   theme(legend.position = "bottom") +
   geom_point(data = specialdays, col = "red")  +
-  geom_text(data = specialdays, col = "black", 
+  geom_text(data = specialdays, col = "black", size = 8,
             mapping = aes(hjust = hjust, vjust = vjust, label = format(date, "%d %b")))
 
-print(p)`;
+# --- mouse-over support: the plot is rendered as SVG (svglite), so that
+# in the web page every point is a real <circle> element that the page
+# can attach a date to. svglite's width/height are in inches: 720 pt = 10 in.
+s = svglite::svgstring(width = ${PLOT_PTS} / 72, height = ${PLOT_PTS} / 72, pointsize = 12)
+print(p)
+invisible(dev.off())
+svg = s()  # fetch only after dev.off(): the SVG is complete (valid XML) then
+
+# webR's svglite cannot see the fonts of the system it runs on (every
+# family falls back to "Noto Sans"), so write the requested font stack
+# back into the SVG: the web browser displaying it resolves the font.
+svg = gsub('font-family: "[^"]*"',
+           'font-family: "Helvetica Neue", Helvetica, Arial, sans-serif',
+           svg)
+
+# The circles appear in the SVG in draw order: first the daily points,
+# then the four red "special day" points. ggplot2 silently skips rows
+# with missing coordinates, so collect the dates of exactly the circles
+# that were drawn, in the same order.
+daily_ok   = !is.na(suntimes$sunrise) & !is.na(suntimes$sunset)
+special_ok = !is.na(specialdays$sunrise) & !is.na(specialdays$sunset)
+circle_dates = c(format(suntimes$date[daily_ok], "%Y-%m-%d"),
+                 format(specialdays$date[special_ok], "%Y-%m-%d"))
+
+.GlobalEnv$.svg   = svg
+.GlobalEnv$.dates = paste(circle_dates, collapse = ",")`;
 
 function showCapturedOutput(output) {
   for (const o of output) {
@@ -218,20 +255,83 @@ function showCapturedOutput(output) {
   }
 }
 
-function showImages(images) {
+function showSvg(svgText, datesText) {
+  hideTip();
   plotEl.replaceChildren();
-  for (const img of images) {
-    const c = document.createElement("canvas");
-    c.width = img.width;
-    c.height = img.height;
-    c.style.width = PLOT_PTS + "px";
-    c.getContext("2d").drawImage(img, 0, 0);
-    plotEl.appendChild(c);
+  const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  if (doc.querySelector("parsererror")) {
+    logLine("ERROR: could not parse the SVG plot", "err");
+    return;
   }
+  const svg = document.importNode(doc.documentElement, true);
+  svg.setAttribute("width", PLOT_PTS);   // 1 viewBox unit == 1 css pixel
+  svg.setAttribute("height", PLOT_PTS);
+  plotEl.appendChild(svg);
+  attachTooltips(svg, datesText);
+  svg.addEventListener("pointermove", onPointerMove);
+  svg.addEventListener("pointerleave", hideTip);
+  window.__svgVersion++; // used by automated tests
+}
+
+// ---- mouse-over tooltip ----------------------------------------------
+// The plot is injected as an SVG, so every point is a <circle> element.
+// The R code above also exports the date of each drawn circle, in draw
+// order; write it onto the circles as a data-date attribute and show it
+// in a small tooltip when the mouse moves near a point.
+
+const tipEl = document.createElement("div");
+tipEl.id = "ss-tip";
+tipEl.hidden = true;
+document.body.appendChild(tipEl);
+
+let tipPoints = [];     // [{x, y, date}] in viewBox (device point) units
+const HOVER_PT = 10;    // hover distance around a point, in viewBox units
+
+function hideTip() { tipEl.hidden = true; }
+
+function showTip(x, y, text) {
+  tipEl.textContent = text;
+  tipEl.hidden = false;
+  tipEl.style.left = x + "px";
+  tipEl.style.top = y + "px";
+}
+
+function attachTooltips(svg, datesText) {
+  const circles = Array.from(svg.querySelectorAll("circle"));
+  const dates = datesText ? datesText.split(",") : [];
+  circles.forEach((c) => c.removeAttribute("data-date"));
+  if (dates.length !== circles.length) {
+    logLine(`Note: date tooltips unavailable (${circles.length} points but ${dates.length} dates)`, "note");
+    tipPoints = [];
+    return;
+  }
+  circles.forEach((c, i) => c.setAttribute("data-date", dates[i]));
+  tipPoints = circles.map((c) => ({
+    x: Number(c.getAttribute("cx")),
+    y: Number(c.getAttribute("cy")),
+    date: c.getAttribute("data-date"),
+  }));
+}
+
+function onPointerMove(e) {
+  if (!tipPoints.length) return hideTip();
+  const svg = e.currentTarget, rect = svg.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  const scale = rect.width / (vb.width || PLOT_PTS);  // css px per viewBox unit
+  const x = (e.clientX - rect.left) / scale;
+  const y = (e.clientY - rect.top) / scale;
+  let best = null, bestD2 = HOVER_PT * HOVER_PT;
+  for (const p of tipPoints) {
+    const d2 = (p.x - x) ** 2 + (p.y - y) ** 2;
+    if (d2 <= bestD2) { best = p; bestD2 = d2; }
+  }
+  if (best) showTip(e.clientX, e.clientY, best.date);
+  else hideTip();
 }
 
 let shelter;
-window.__runs = 0; // small counter used by automated tests
+window.__runs = 0;       // small counter used by automated tests
+window.__svgVersion = 0; // bumped every time a new SVG plot is displayed
 
 function setBusy(busy, label) {
   btn.disabled = busy;
@@ -256,14 +356,16 @@ async function runPlot() {
   logLine(`— Plotting for lat = ${lat}, lon = ${lon}, year = ${year}, tz = ${tz}`);
   setBusy(true, "Plotting…");
   try {
-    const cap = await shelter.captureR(code, {
-      captureGraphics: { width: PLOT_PTS, height: PLOT_PTS, bg: "white", pointsize: 12, capture: true }
-    });
+    const cap = await shelter.captureR(code, { captureGraphics: false });
     showCapturedOutput(cap.output);
-    if (cap.images.length === 0) {
+    // The R code leaves the SVG plot and the dates of its circles in the
+    // R global environment; fetch both before purging the shelter.
+    const svgText = await globalThis.mainWebR.evalRString('if (is.null(.GlobalEnv$.svg)) "" else .GlobalEnv$.svg');
+    const datesText = await globalThis.mainWebR.evalRString('if (is.null(.GlobalEnv$.dates)) "" else .GlobalEnv$.dates');
+    if (typeof svgText !== "string" || !svgText.includes("<svg")) {
       logLine("ERROR: no plot was produced (see messages above)", "err");
     } else {
-      showImages(cap.images);
+      showSvg(svgText, datesText);
     }
   } catch (err) {
     logLine("ERROR: " + (err?.message ?? String(err)), "err");
@@ -274,7 +376,7 @@ async function runPlot() {
 }
 
 (async () => {
-  logLine("Loading the R WebAssembly runtime and packages (suncalc, ggplot2, dplyr)…");
+  logLine("Loading the R WebAssembly runtime and packages (suncalc, ggplot2, dplyr, svglite)…");
   try {
     if (typeof globalThis.qwebrInstance === "undefined") {
       throw new Error("the quarto-webr extension did not initialize — is the `webr` filter enabled and the `_extensions/webr/` directory present?");
