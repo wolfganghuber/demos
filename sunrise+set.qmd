@@ -162,7 +162,7 @@ suppressPackageStartupMessages({
   library("ggplot2")
   library("dplyr")
 })
-  
+
 # Dates for the chosen year
 dates = seq(as.Date(sprintf("%04d-01-01", year)), as.Date(sprintf("%04d-12-31", year)), by = "day")
 
@@ -172,32 +172,38 @@ suntimes = suncalc::getSunlightTimes(date = dates, lat = lat, lon = lon, tz = tz
 # Extract hour of day as decimal (e.g., 6.5 = 6:30 AM)
 hour = function(x) as.numeric(format(x, "%H")) + as.numeric(format(x, "%M")) / 60 + as.numeric(format(x, "%S")) / 3600
 
-suntimes = dplyr::mutate(suntimes,
-  sunriseHour = hour(sunrise),
-  sunsetHour  = hour(sunset))
-
-LatestNight   = dplyr::slice_max(suntimes, sunsetHour)[1,]
-EarliestDay   = dplyr::slice_min(suntimes, sunriseHour)[1,]
-EarliestNight = dplyr::slice_min(suntimes, sunsetHour)[1,]
-LatestDay     = dplyr::slice_max(suntimes, sunriseHour)[1,]
-
-p = ggplot(suntimes, aes(x = sunriseHour, y = sunsetHour, label = format(date))) +
-  geom_point(col = "#b0b0b0") +
-  geom_path(col = "lightblue") +
-  geom_point(data = LatestDay,     col = "red") +
-  geom_point(data = EarliestNight, col = "red") +
-  geom_point(data = EarliestDay,   col = "red") +
-  geom_text(data =  LatestDay,     hjust = "middle", vjust = "top") +
-  geom_text(data =  EarliestNight, vjust = "top") +
-  geom_text(data =  EarliestDay,   hjust = "middle", vjust = "top") +
-  xlab("Sunrise (hour)") + ylab("Sunset (hour)") +
-  ggtitle(sprintf("Sunrise vs Sunset Times (%.2f, %.2f), %d", lat, lon, year))
-
-if (LatestNight$date != EarliestDay$date) {
-  p = p +
-    geom_point(data = LatestNight, col = "red") +
-    geom_text(data =  LatestNight, hjust = "left", vjust = "bottom")
+periodicdiff = function(x) {
+  x[c(2:length(x), 1)] - x
 }
+
+suntimes = dplyr::mutate(suntimes,
+    sunrise = hour(sunrise),
+    sunset  = hour(sunset),
+    speed   = periodicdiff(sunset-sunrise) * 60
+)
+
+specialdays = bind_rows(
+  dplyr::slice_min(suntimes, sunrise)[1,],
+  dplyr::slice_max(suntimes, sunset)[1,],
+  dplyr::slice_min(suntimes, sunset)[1,],
+  dplyr::slice_max(suntimes, sunrise)[1,]
+) |> bind_cols(
+  what = c("EarliestDay", "Latest Night", "EarliestNight", "LatestDay"),
+  hjust = c(  0,    0,   1,    1), 
+  vjust = c(1.5, -0.5, 1.5, -0.5)
+) |> unique()
+
+p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
+  geom_path(col = "#707070") +
+  geom_point() +
+  scale_colour_gradient2(name = "change (min/day)") +
+  xlab("Sunrise (hour)") + 
+  ylab("Sunset (hour)") +
+  ggtitle(sprintf("Sunrise vs sunset times at (%.2f, %.2f) in %d", lat, lon, year)) +
+  theme(legend.position = "bottom") +
+  geom_point(data = specialdays, col = "red")  +
+  geom_text(data = specialdays, col = "black", 
+            mapping = aes(hjust = hjust, vjust = vjust, label = format(date, "%d %b")))
 
 print(p)`;
 
