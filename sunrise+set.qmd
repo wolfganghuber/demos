@@ -12,14 +12,8 @@ webr:
     - svglite
 ---
 
-For every day of the chosen year this page computes the sunrise and sunset
-times at a given location with the R package
-[suncalc](https://cran.r-project.org/package=suncalc) and plots each day as a
-point (*x* = sunrise hour, *y* = sunset hour). The red points mark the day with
-the earliest sunset and the day with the latest sunrise. All computation
-happens locally in your browser: R itself runs as
-[WebAssembly](https://docs.r-wasm.org/), loaded by the
-[quarto-webr](https://github.com/coatless/quarto-webr) extension.
+For every day of the chosen year this page computes the sunrise and sunset times at a given location with the R package [suncalc](https://cran.r-project.org/package=suncalc) and plots each day as a
+point (*x* = sunrise hour, *y* = sunset hour). The highlighted points mark the days with the earliest/latest sunset and the day with the earliest/latest sunrise. All computation happens locally in the browser, R runs as [WebAssembly](https://docs.r-wasm.org/), loaded by the [quarto-webr](https://github.com/coatless/quarto-webr) extension.
 
 Enter a location and a year, then press **Plot**. Hover the mouse over a
 point to see that day's date.
@@ -70,15 +64,9 @@ connection is required.
 <div id="ss-plot"></div>
 
 <details>
-<summary>Show the R code that is evaluated</summary>
+<summary>Show the R code</summary>
 <pre id="ss-rcode">(waiting to run…)</pre>
 </details>
-
-Ported from `sunrise+set.R` with the
-[quarto-webr](https://github.com/coatless/quarto-webr) extension (bundled in
-`_extensions/webr/`), which runs [webR](https://docs.r-wasm.org/) — R compiled
-to WebAssembly — locally in your web browser. R packages are downloaded on
-each page load from [repo.r-wasm.org](https://repo.r-wasm.org/).
 
 <style type="text/css">
   .ss-card {
@@ -117,9 +105,9 @@ each page load from [repo.r-wasm.org](https://repo.r-wasm.org/).
   }
   #ss-tip {
     position: fixed; z-index: 1000; pointer-events: none;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     font-size: .8rem; padding: .15rem .4rem; white-space: nowrap;
-    background: #1a1a1a; color: #fff; border-radius: 5px;
+    background: #fff; color: #000; border: 1px solid #ccc; border-radius: 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
     transform: translate(-50%, -170%);
   }
@@ -174,15 +162,13 @@ suppressPackageStartupMessages({
   library("dplyr")
 })
 
-# Dates for the chosen year
 dates = seq(as.Date(sprintf("%04d-01-01", year)), as.Date(sprintf("%04d-12-31", year)), by = "day")
-
-# Sunrise and sunset times
 suntimes = suncalc::getSunlightTimes(date = dates, lat = lat, lon = lon, tz = tz)
 
 # Extract hour of day as decimal (e.g., 6.5 = 6:30 AM)
-hour = function(x) as.numeric(format(x, "%H")) + as.numeric(format(x, "%M")) / 60 + as.numeric(format(x, "%S")) / 3600
-
+hour = function(x) {
+  as.numeric(format(x, "%H")) + as.numeric(format(x, "%M")) / 60 + as.numeric(format(x, "%S")) / 3600
+}
 periodicdiff = function(x) {
   x[c(2:length(x), 1)] - x
 }
@@ -204,10 +190,12 @@ specialdays = bind_rows(
   vjust = c(1.5, -0.5, 1.5, -0.5)
 ) |> unique()
 
+berlin = c("#9EB0FF", "#91A3D2", "#889AB8", "#8390A1", "#81888F", "#808080", "#8F8180", "#A18A87", "#B89694", "#D2A2A1", "#FFAEAE")
+
 p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
   geom_path(col = "#707070") +
   geom_point() +
-  scale_colour_gradient2(name = "change (min/day)") +
+  scale_colour_gradientn(name = "change (min/day)", colours = berlin) +
   xlab("Sunrise (hour)") + 
   ylab("Sunset (hour)") +
   ggtitle(sprintf("Sunrise vs sunset times at (%.2f, %.2f) in %d", lat, lon, year)) +
@@ -217,29 +205,28 @@ p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
   geom_text(data = specialdays, col = "black", size = 8,
             mapping = aes(hjust = hjust, vjust = vjust, label = format(date, "%d %b")))
 
-# --- mouse-over support: the plot is rendered as SVG (svglite), so that
-# in the web page every point is a real <circle> element that the page
+# --- mouse-over support: the plot is rendered as SVG via svglite, so that
+# in the web page every point is a <circle> element that the page
 # can attach a date to. svglite's width/height are in inches: 720 pt = 10 in.
 s = svglite::svgstring(width = ${PLOT_PTS} / 72, height = ${PLOT_PTS} / 72, pointsize = 12)
 print(p)
 invisible(dev.off())
 svg = s()  # fetch only after dev.off(): the SVG is complete (valid XML) then
 
-# webR's svglite cannot see the fonts of the system it runs on (every
-# family falls back to "Noto Sans"), so write the requested font stack
-# back into the SVG: the web browser displaying it resolves the font.
+# webR's svglite cannot see the fonts of the system it runs on (every family falls back to "Noto Sans"),
+# so write the requested font stack back into the SVG. The web browser resolves the font.
 svg = gsub('font-family: "[^"]*"',
            'font-family: "Helvetica Neue", Helvetica, Arial, sans-serif',
            svg)
 
 # The circles appear in the SVG in draw order: first the daily points,
 # then the four red "special day" points. ggplot2 silently skips rows
-# with missing coordinates, so collect the dates of exactly the circles
+# with missing coordinates, so here we attempt to collect the dates of exactly the circles
 # that were drawn, in the same order.
 daily_ok   = !is.na(suntimes$sunrise) & !is.na(suntimes$sunset)
 special_ok = !is.na(specialdays$sunrise) & !is.na(specialdays$sunset)
-circle_dates = c(format(suntimes$date[daily_ok], "%Y-%m-%d"),
-                 format(specialdays$date[special_ok], "%Y-%m-%d"))
+circle_dates = c(format(suntimes$date[daily_ok], "%d %b"),
+                 format(specialdays$date[special_ok], "%d %b"))
 
 .GlobalEnv$.svg   = svg
 .GlobalEnv$.dates = paste(circle_dates, collapse = ",")`;
