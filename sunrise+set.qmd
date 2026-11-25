@@ -1,5 +1,8 @@
 ---
 title: "Sunrise vs Sunset Times over the Year"
+date: "2026-11-23"
+author: "Wolfgang Huber"
+categories: "Wisdom"
 format: html
 engine: knitr
 filters:
@@ -10,6 +13,7 @@ webr:
     - ggplot2
     - dplyr
     - svglite
+image: "../photos/above-sevastopol-ukraine.jpg"
 ---
 
 For every day of the chosen year this page computes the sunrise and sunset times at a given location with the R package [suncalc](https://cran.r-project.org/package=suncalc) and plots each day as a
@@ -27,13 +31,13 @@ point to see that day's date.
 <div class="ss-card">
 <div class="ss-controls">
 <label>Latitude
-<input id="ss-lat" type="number" step="any" min="-90" max="90" value="49.38">
+<input id="ss-lat" type="number" step="any" min="-90" max="90" value="49.384755">
 </label>
 <label>Longitude
-<input id="ss-lon" type="number" step="any" min="-180" max="180" value="8.71">
+<input id="ss-lon" type="number" step="any" min="-180" max="180" value="8.709056">
 </label>
 <label>Year
-<input id="ss-year" type="number" step="1" min="1" max="9999" value="2025">
+<input id="ss-year" type="number" step="1" min="1" max="9999" value="2026">
 </label>
 <label>Timezone
 <input id="ss-tz" type="text" list="ss-tzlist" value="Europe/Berlin" spellcheck="false">
@@ -190,7 +194,9 @@ specialdays = bind_rows(
   vjust = c(1.5, -0.5, 1.5, -0.5)
 ) |> unique()
 
-berlin = c("#9EB0FF", "#91A3D2", "#889AB8", "#8390A1", "#81888F", "#808080", "#8F8180", "#A18A87", "#B89694", "#D2A2A1", "#FFAEAE")
+berlin = c("#008CFF", "#328AE6", "#5088CD", "#6585B3",
+  "#758299", "#808080", "#99807B", "#B47B72",
+  "#CE7265", "#E66752", "#FF563D")
 
 p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
   geom_path(col = "#707070") +
