@@ -13,6 +13,7 @@ webr:
     - ggplot2
     - dplyr
     - svglite
+    - hms
 image: "../photos/above-sevastopol-ukraine.jpg"
 ---
 
@@ -169,18 +170,24 @@ suppressPackageStartupMessages({
 dates = seq(as.Date(sprintf("%04d-01-01", year)), as.Date(sprintf("%04d-12-31", year)), by = "day")
 suntimes = suncalc::getSunlightTimes(date = dates, lat = lat, lon = lon, tz = tz)
 
-# Extract hour of day as decimal (e.g., 6.5 = 6:30 AM)
-hour = function(x) {
-  as.numeric(format(x, "%H")) + as.numeric(format(x, "%M")) / 60 + as.numeric(format(x, "%S")) / 3600
-}
 periodicdiff = function(x) {
   x[c(2:length(x), 1)] - x
 }
 
+to_seconds = function(x, what = c("am", "pm")) {
+  v = as.numeric(hms::as_hms(x)) 
+  switch(what,
+    am = ifelse(v >= 22*3600, v - 86400, v),
+    pm = ifelse(v <=  2*3600, v + 86400, v),
+    stop("Sapperlot")
+  ) 
+}
+
 suntimes = dplyr::mutate(suntimes,
-    sunrise = hour(sunrise),
-    sunset  = hour(sunset),
-    speed   = periodicdiff(sunset-sunrise) * 60
+  sunrise = to_seconds(sunrise, "am"),
+  sunset  = to_seconds(sunset,  "pm"),
+  speed   = periodicdiff(sunset-sunrise) / 60,
+  speed   = ifelse(is.na(speed), 0, speed)
 )
 
 specialdays = bind_rows(
@@ -192,29 +199,33 @@ specialdays = bind_rows(
   what = c("EarliestDay", "Latest Night", "EarliestNight", "LatestDay"),
   hjust = c(  0,    0,   1,    1), 
   vjust = c(1.5, -0.5, 1.5, -0.5)
-) |> unique()
+) 
+specialdays = specialdays[!duplicated(specialdays$date), ]
 
-berlin = c("#008CFF", "#328AE6", "#5088CD", "#6585B3",
-  "#758299", "#808080", "#99807B", "#B47B72",
-  "#CE7265", "#E66752", "#FF563D")
+berlin = c("#008CFF", "#328AE6", "#5088CD", "#6585B3", 
+           "#758299", "#808080", "#99807B", 
+           "#B47B72", "#CE7265", "#E66752", "#FF563D")
 
 p = ggplot(suntimes, aes(x = sunrise, y = sunset, col = speed)) +
-  geom_path(col = "#707070") +
-  geom_point() +
-  scale_colour_gradientn(name = "change (min/day)", colours = berlin) +
+  scale_x_time(labels = scales::label_time(format = "%H:%M")) +
+  scale_y_time(labels = scales::label_time(format = "%H:%M")) +
+  scale_colour_gradientn(name = "change (min/day)", colours = berlin, 
+    limits = 1.1*c(-1,1)*max(abs(quantile(suntimes$speed, probs =c(0.025, 0.975), na.rm=TRUE)))) +
+  ggtitle(sprintf("Sunrise vs sunset times at (%.2f, %.2f) in %d", lat, lon, year)) +
   xlab("Sunrise (hour)") + 
   ylab("Sunset (hour)") +
-  ggtitle(sprintf("Sunrise vs sunset times at (%.2f, %.2f) in %d", lat, lon, year)) +
   theme_gray(base_size = 18, base_family = "Helvetica Neue") +
   theme(legend.position = "bottom") +
-  geom_point(data = specialdays, col = "red")  +
-  geom_text(data = specialdays, col = "black", size = 8,
+  geom_path(col = "#707070") +
+  geom_point() +
+  geom_point(data = specialdays, colour = "darkorange1") +
+  geom_text(data = specialdays, colour = "black", size = 8,
             mapping = aes(hjust = hjust, vjust = vjust, label = format(date, "%d %b")))
 
 # --- mouse-over support: the plot is rendered as SVG via svglite, so that
 # in the web page every point is a <circle> element that the page
 # can attach a date to. svglite's width/height are in inches: 720 pt = 10 in.
-s = svglite::svgstring(width = ${PLOT_PTS} / 72, height = ${PLOT_PTS} / 72, pointsize = 12)
+s = svglite::svgstring(width = 720 / 72, height = 720 / 72, pointsize = 12)
 print(p)
 invisible(dev.off())
 svg = s()  # fetch only after dev.off(): the SVG is complete (valid XML) then
